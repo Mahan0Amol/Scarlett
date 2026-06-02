@@ -1,0 +1,25 @@
+{
+    "face_auth_enabled": false,
+    "tool_permissions": {
+        "generate_cad": true,
+        "run_web_agent": true,
+        "write_file": true,
+        "read_directory": true,
+        "read_file": true,
+        "create_project": true,
+        "switch_project": true,
+        "list_projects": true
+    },
+    "printers": [
+        {
+            "name": "Mahan",
+            "host": "192.168.1.250",
+            "port": 80,
+            "type": "moonraker",
+            "camera_url": null
+        }
+    ],
+    "kasa_devices": [],
+    "door_devices": [],
+    "camera_flipped": false
+}
