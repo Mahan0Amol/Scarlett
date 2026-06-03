@@ -9,14 +9,14 @@ class CmdAgent:
         self.current_dir = os.getcwd()
         self.ai_function = ai_function
         
-        # دستورات خطرناک
+        # dangerous commads
         self.blocked_patterns = [
             'rm -rf /', 'del /f /s /q C:\\', 'format C:', 'format /',
             'shutdown /s', 'shutdown -h', 'reboot', 'init 0', 'init 6',
             'dd if=/dev/zero', 'mkfs.', ':(){ :|:& };:',
         ]
         
-        # دستورات تعاملی که نباید مستقیم اجرا بشن
+        # interactive commands
         self.interactive_commands = [
             'ipython', 'python', 'python3', 'node', 'bash', 'sh', 
             'zsh', 'fish', 'cmd', 'powershell', 'mysql', 'psql',
@@ -24,7 +24,7 @@ class CmdAgent:
             'emacs', 'top', 'htop', 'less', 'more', 'man'
         ]
         
-        # دستورات داخلی
+        # internal commands
         self.internal_commands = ['cd', 'clear', 'help', 'status']
     
     def is_dangerous(self, command):
@@ -35,23 +35,22 @@ class CmdAgent:
         return False
     
     def is_interactive(self, command):
-        """تشخیص دستورات تعاملی"""
+        """detect interactive commands"""
         cmd_name = command.strip().split()[0].lower() if command.strip() else ''
         
-        # چک کردن با مسیر کامل
+        # Check with the full path
         cmd_base = os.path.basename(cmd_name).lower()
         
         if cmd_base in self.interactive_commands:
-            # اگه آرگومان داشته باشه (مثل python script.py) تعاملی نیست
+            # It is not interactive if it have arg (Like pyton script.py)
             parts = command.strip().split()
             if len(parts) > 1:
-                # چک کن آرگومان اول فایل نیست (-i, -c و... هم تعاملی نیستن)
                 first_arg = parts[1]
                 if first_arg in ['-i', '--interactive']:
-                    return True  # تعاملی
-                # اگه فایل یا آرگومان داره، غیرتعاملیه
+                    return True  # interactive
+                # not interactiv
                 return False
-            # بدون آرگومان = تعاملی
+            # without arg = interactive
             return True
         
         return False
@@ -61,13 +60,13 @@ class CmdAgent:
         if not command:
             return {'output': '', 'current_dir': self._get_display_dir()}
         
-        # چک امنیتی
+        # security check
         if self.is_dangerous(command):
             return {'error': '⚠️ DANGEROUS COMMAND BLOCKED!'}
         
         cmd_name = command.split()[0].lower()
         
-        # دستورات داخلی
+        # intenrnal commands
         if cmd_name == 'clear':
             return {'output': '', 'clear': True}
         
@@ -80,17 +79,17 @@ class CmdAgent:
         if cmd_name == 'cd':
             return self._handle_cd(command)
         
-        # چک دستورات تعاملی
+        # check if the command is interactive
         if self.is_interactive(command):
             return {'error': f'❌ Interactive command blocked: {cmd_name}\n\n' +
                            f'Interactive shells (python, node, ipython, etc.) cannot run here.\n' +
                            f'Try: {cmd_name} script.py  or  {cmd_name} -c "code"  or  {cmd_name} --version'}
         
-        # اجرای دستور
+        # run the command
         return await self._execute_command(command)
     
     async def _execute_command(self, command):
-        """اجرای دستور با timeout"""
+        """run the command with timeout"""
         try:
             if platform.system() == 'Windows':
                 result = subprocess.run(
@@ -100,7 +99,7 @@ class CmdAgent:
                     timeout=30,
                     shell=True,
                     cwd=self.current_dir,
-                    stdin=subprocess.DEVNULL,  # 👈 این مهمه! ورودی رو می‌بنده
+                    stdin=subprocess.DEVNULL,
                     env={**os.environ, 'PYTHONUNBUFFERED': '1'}
                 )
             else:
@@ -112,7 +111,7 @@ class CmdAgent:
                     shell=True,
                     executable='/bin/bash',
                     cwd=self.current_dir,
-                    stdin=subprocess.DEVNULL,  # 👈 جلوگیری از تعاملی شدن
+                    stdin=subprocess.DEVNULL,
                     env={**os.environ, 'PYTHONUNBUFFERED': '1', 'TERM': 'dumb'}
                 )
             
@@ -123,25 +122,23 @@ class CmdAgent:
             self.current_dir = os.getcwd()
             
             return {
-                'output': output.rstrip() or 'Command ran successfully',
+                'output': output.rstrip() or '(There waas no output when command ran)',
                 'current_dir': self._get_display_dir(),
                 'exit_code': result.returncode
             }
             
         except subprocess.TimeoutExpired:
-            return {'error': f'⏱️ Command timed out (30s): {command[:50]}...'}
+            return {'error': f'Command timed out (30s): {command[:50]}...'}
         except Exception as e:
             return {'error': f'Error: {str(e)}'}
     
     def _handle_cd(self, command):
-        """مدیریت دستور cd با پشتیبانی کامل از ویندوز و لینوکس"""
         try:
-            # جدا کردن مسیر از دستور
-            # پشتیبانی از: cd /d E:, cd E:, cd "path", cd /path, cd ..
+            # split the path from the command
+            # It can run: cd /d E:, cd E:, cd "path", cd /path, cd ..
             parts = command.split(maxsplit=1)
             
             if len(parts) < 2:
-                # cd بدون آرگومان
                 os.chdir(os.path.expanduser('~'))
                 self.current_dir = os.getcwd()
                 return {
@@ -151,41 +148,33 @@ class CmdAgent:
             
             path = parts[1].strip()
             
-            # حذف کوتیشن‌ها
+            # delete ""
             if (path.startswith('"') and path.endswith('"')) or \
             (path.startswith("'") and path.endswith("'")):
                 path = path[1:-1]
             
-            # پشتیبانی از سینتکس CMD ویندوز
             if platform.system() == 'Windows':
                 # cd /d E:/path
                 if path.lower().startswith('/d'):
                     path = path[2:].strip()
             
-            # تبدیل / به \ در ویندوز
             if platform.system() == 'Windows':
-                # فقط درایو؟ (مثل E:)
                 if len(path) == 2 and path[1] == ':' and path[0].isalpha():
                     path = path + '\\'
                 path = path.replace('/', '\\')
             
-            # تبدیل ~ به مسیر home
             path = os.path.expanduser(path)
             
-            # مسیر نسبی رو مطلق کن
             if not os.path.isabs(path):
                 path = os.path.join(self.current_dir, path)
             
-            # نرمال‌سازی (حذف .. و . های اضافی)
             path = os.path.normpath(path)
             
-            # بررسی وجود مسیر
             if not os.path.exists(path):
                 return {'error': f'Directory not found: {path}'}
             if not os.path.isdir(path):
                 return {'error': f'Not a directory: {path}'}
             
-            # تغییر دایرکتوری
             os.chdir(path)
             self.current_dir = os.getcwd()
             
@@ -201,10 +190,10 @@ class CmdAgent:
     
     def _get_display_dir(self):
         if platform.system() == 'Windows':
-            # ویندوز: D:\path\to\folder
+            # Windows: D:\path\to\folder
             return self.current_dir
         else:
-            # لینوکس: ~/path یا /full/path
+            # Linux: ~/path or /full/path
             home = os.path.expanduser('~')
             if self.current_dir.startswith(home):
                 return '~' + self.current_dir[len(home):]
