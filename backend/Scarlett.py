@@ -271,7 +271,20 @@ wait_and_delay = {
     }
 }
 
-tools = [{'google_search': {}}, {"function_declarations": [generate_cad, run_web_agent, create_project_tool, press_key_on_keyboard, write_with_keyboard, switch_project_tool, list_projects_tool, list_smart_devices_tool, move_robot, control_light_tool, control_door_tool, discover_printers_tool, print_stl_tool, get_print_status_tool, iterate_cad_tool, send_email_tool, wait_and_delay] + tools_list[0]['function_declarations'][1:]}]
+run_cmd_tool = {
+    "name": "run_cmd",
+    "description": "Executes a windows CMD command on the host machine and returns the output. Use this to run scripts, check files, install packages, query system info, or perform any terminal operation.",
+    "parameters": {
+        "type": "OBJECT",
+        "properties": {
+            "command": {"type": "STRING", "description": "The shell command to execute (e.g. 'ls -la', 'python script.py', 'pip install numpy')."},
+            "working_dir": {"type": "STRING", "description": "Optional working directory to run the command in. Defaults to the current project directory."}
+        },
+        "required": ["command"]
+    }
+}
+
+tools = [{'google_search': {}}, {"function_declarations": [generate_cad, run_web_agent, create_project_tool, press_key_on_keyboard, write_with_keyboard, switch_project_tool, list_projects_tool, list_smart_devices_tool, move_robot, control_light_tool, control_door_tool, discover_printers_tool, print_stl_tool, get_print_status_tool, iterate_cad_tool, send_email_tool, wait_and_delay, run_cmd_tool] + tools_list[0]['function_declarations'][1:]}]
 
 # --- CONFIG UPDATE: Enabled Transcription ---
 config = types.LiveConnectConfig(
@@ -304,6 +317,7 @@ from kasa_agent import KasaAgent
 from smart_agent import SmartAgent
 from printer_agent import PrinterAgent
 from email_agent import EmailAgent
+from cmd_agent import CmdAgent
 
 email_agent = EmailAgent(
     email_config={
@@ -388,7 +402,7 @@ async def discover_light_devices(network: str = None, timeout: float = 2.0) -> l
     return found_devices
 
 class AudioLoop:
-    def __init__(self, video_mode=DEFAULT_MODE, on_audio_data=None, on_video_frame=None, on_cad_data=None, on_web_data=None, on_transcription=None, on_tool_confirmation=None, on_cad_status=None, on_cad_thought=None, on_project_update=None, on_device_update=None, on_error=None, input_device_index=None, input_device_name=None, output_device_index=None, kasa_agent=None, email_agent=None):
+    def __init__(self, video_mode=DEFAULT_MODE, on_audio_data=None, on_video_frame=None, on_cad_data=None, on_web_data=None, on_transcription=None, on_tool_confirmation=None, on_cad_status=None, on_cad_thought=None, on_project_update=None, on_device_update=None, on_error=None, input_device_index=None, input_device_name=None, output_device_index=None, kasa_agent=None, email_agent=None,  sio=None, client_sid=None):
         self.video_mode = video_mode
         self.on_audio_data = on_audio_data
         self.on_video_frame = on_video_frame
@@ -405,6 +419,10 @@ class AudioLoop:
         self.input_device_name = input_device_name
         self.output_device_index = output_device_index
         self.email_agent = email_agent if email_agent else EmailAgent(email_config={"email": "MahanBiabani12@gmail.com", "password": "xuip sxhc faed gapv", "smtp": "smtp.gmail.com", "port": 587})
+        self.cmd_agent = CmdAgent()
+
+        self.sio = sio
+        self.client_sid = client_sid
 
         self.audio_in_queue = None
         self.out_queue = None
@@ -897,7 +915,7 @@ class AudioLoop:
                         print("The tool was called")
                         function_responses = []
                         for fc in response.tool_call.function_calls:
-                            if fc.name in ["generate_cad", "run_web_agent", "write_file", "read_directory", "read_file", "create_project", "press_key_on_keyboard", "write_with_keyboard", "switch_project", "list_projects", "list_smart_devices", "move_robot", "control_light", "control_door", "discover_printers", "print_stl", "get_print_status", "iterate_cad", "send_email", "wait_and_delay"]:
+                            if fc.name in ["generate_cad", "run_web_agent", "write_file", "read_directory", "read_file", "create_project", "press_key_on_keyboard", "write_with_keyboard", "switch_project", "list_projects", "list_smart_devices", "move_robot", "control_light", "control_door", "discover_printers", "print_stl", "get_print_status", "iterate_cad", "send_email", "wait_and_delay", "run_cmd"]:
                                 prompt = fc.args.get("prompt", "") # Prompt is not present for all tools
                                 
                                 # Check Permissions (Default to True if not set)
@@ -1351,6 +1369,65 @@ class AudioLoop:
                                         id=fc.id, name=fc.name, response={"result": f"Waited for {duration} seconds"}
                                     )   
                                     function_responses.append(function_response)
+                                elif fc.name == "run_cmd":
+                                    command = fc.args["command"]
+                                    print(f"[scarlett DEBUG] [TOOL] Tool Call: 'run_cmd' Command='{command}'")
+
+                                    # Capture loop/session refs for async task
+                                    session_ref = self.session
+                                    sio_ref = self.sio
+                                    sid_ref = self.client_sid
+                                    fc_id = fc.id
+                                    fc_name = fc.name
+
+                                    async def _run_and_respond():
+                                        result_str = ""
+                                        try:
+                                            if self.cmd_agent:
+                                                result = await self.cmd_agent.execute_command(command)
+
+                                                if result.get('clear'):
+                                                    result_str = "Terminal cleared."
+                                                    if sio_ref and sid_ref:
+                                                        await sio_ref.emit('cmd_clear', room=sid_ref)
+                                                elif 'error' in result:
+                                                    result_str = f"Error: {result['error']}"
+                                                    if sio_ref and sid_ref:
+                                                        await sio_ref.emit('cmd_error', {'error': result['error']}, room=sid_ref)
+                                                else:
+                                                    result_str = result.get('output', '(no output)')
+                                                    if sio_ref and sid_ref:
+                                                        await sio_ref.emit('cmd_output', {
+                                                            'output': result_str,
+                                                            'current_dir': result.get('current_dir'),
+                                                            'from_ai': True
+                                                        }, room=sid_ref)
+                                            else:
+                                                result_str = "cmd_agent is not available."
+
+                                        except Exception as e:
+                                            result_str = f"run_cmd failed: {e}"
+                                            print(f"[scarlett DEBUG] [ERR] run_cmd: {e}")
+
+                                        # Truncate for AI context
+                                        if len(result_str) > 3000:
+                                            result_str = result_str[:3000] + "\n... (output truncated)"
+
+                                        # Send result back to the AI model
+                                        try:
+                                            await session_ref.send_tool_response(function_responses=[
+                                                types.FunctionResponse(
+                                                    id=fc_id,
+                                                    name=fc_name,
+                                                    response={"result": result_str}
+                                                )
+                                            ])
+                                        except Exception as e:
+                                            print(f"[scarlett DEBUG] [ERR] run_cmd tool response failed: {e}")
+
+                                    asyncio.create_task(_run_and_respond())
+                                    # Don't append to function_responses — response is sent inside the task
+                                    continue  # skip the outer function_responses.append
 
                         if function_responses:
                             await self.session.send_tool_response(function_responses=function_responses)

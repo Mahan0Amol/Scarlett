@@ -215,6 +215,9 @@ async def connect(sid, environ):
     print(f"Client connected: {sid}")
     await sio.emit('status', {'msg': 'Connected to Scarlett Backend'}, room=sid)
 
+    if audio_loop:
+        audio_loop.client_sid = sid
+
     global authenticator
     
     # Callback for Auth Status
@@ -368,7 +371,10 @@ async def start_audio(sid, data=None):
 
             input_device_index=device_index,
             input_device_name=device_name,
-            kasa_agent=kasa_agent
+            kasa_agent=kasa_agent,
+
+            sio=sio,
+            client_sid=sid
         )
         print("AudioLoop initialized successfully.")
 
