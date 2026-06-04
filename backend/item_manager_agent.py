@@ -40,7 +40,7 @@ class ItemAgent:
     async def read_categories(self) -> list:
         """Return a list of all category names."""
         data = await self._load()
-        return list(data.keys())
+        return f"The list of categories is: {list(data.keys())}"
 
     async def add_category(self, category_name: str, description: str) -> bool:
         """
@@ -51,13 +51,14 @@ class ItemAgent:
 
         if category_name in data:
             print(f"[ItemAgent] Category '{category_name}' already exists.")
-            return False
+            return f"Category '{category_name}' already exists."
 
         data[category_name] = {
             "description": description,
             "items": {}
         }
-        return await self._save(data)
+        await self._save(data)
+        return f"Category '{category_name}' added successfully."
 
     async def item_exists(self, category_name: str, item_name: str) -> bool:
         """Return True if the item exists inside the given category."""
@@ -82,16 +83,17 @@ class ItemAgent:
 
         if category_name not in data:
             print(f"[ItemAgent] Category '{category_name}' not found.")
-            return False
+            return f"Category '{category_name}' not found."
 
         items = data[category_name].setdefault("items", {})
 
         if item_name in items:
             print(f"[ItemAgent] Item '{item_name}' already exists in '{category_name}'.")
-            return False
+            return f"Item '{item_name}' already exists in '{category_name}'."
 
         items[item_name] = {"value": value}
-        return await self._save(data)
+        await self._save(data)
+        return f"Item '{item_name}' added to category '{category_name}' successfully."
 
     async def search_item(self, query: str) -> list:
         """
@@ -139,16 +141,17 @@ class ItemAgent:
 
         if category_name not in data:
             print(f"[ItemAgent] Category '{category_name}' not found.")
-            return False
+            return f"Category '{category_name}' not found."
 
         items = data[category_name].get("items", {})
 
         if item_name not in items:
             print(f"[ItemAgent] Item '{item_name}' not found in '{category_name}'.")
-            return False
+            return f"Item '{item_name}' not found in '{category_name}'."
 
         items[item_name]["value"] = new_value
-        return await self._save(data)
+        await self._save(data)
+        return f"Item '{item_name}' updated in category '{category_name}' successfully."
 
     async def remove_item(self, category_name: str, item_name: str) -> bool:
         """
@@ -159,16 +162,38 @@ class ItemAgent:
 
         if category_name not in data:
             print(f"[ItemAgent] Category '{category_name}' not found.")
-            return False
+            return f"Category '{category_name}' not found."
 
         items = data[category_name].get("items", {})
 
         if item_name not in items:
             print(f"[ItemAgent] Item '{item_name}' not found in '{category_name}'.")
-            return False
+            return f"Item '{item_name}' not found in '{category_name}'."
 
         del items[item_name]
-        return await self._save(data)
+        await self._save(data)
+        return f"Item '{item_name}' removed from category '{category_name}' successfully."
+    
+    async def handle_function_call(self, fc):
+        """Handle a function call from the agent."""
+        func_map = {
+            "read_categories": self.read_categories,
+            "add_category": self.add_category,
+            "item_exists": self.item_exists,
+            "add_item": self.add_item,
+            "search_item": self.search_item,
+            "update_item": self.update_item,
+            "remove_item": self.remove_item
+        }
+
+        func = func_map.get(fc.name)
+        if not func:
+            print(f"[ItemAgent] Unknown function call: {fc.name}")
+            return None
+
+        # Extract arguments and call the function
+        args = fc.args or {}
+        return await func(**args)
 
 
 # ─────────────────────────────────────────────────
@@ -179,11 +204,10 @@ async def _demo():
     items_file_path = "backend/items.json"
     agent = ItemAgent(items_file_path)
 
-    print("── read_categories ──────────────────────────")
     print(await agent.read_categories())
 
     print("\n── add_category ─────────────────────────────")
-    print(await agent.add_category("emails", "email adresses"))
+    print(await agent.add_category("ds", "email adresses"))
 
     print("\n── add_item ─────────────────────────────────")
     print(await agent.add_item("emails", "sam", "sam@example.com"))
@@ -196,7 +220,7 @@ async def _demo():
     print(await agent.search_item("sam"))
 
     print("\n── update_item ──────────────────────────────")
-    print(await agent.update_item("emails", "sam", "samuel@newdomain.com"))
+    print(await agent.update_item("emails", "sam", "samuel@newdomain.com"))   
 
     print("\n── search_item after update ('samuel') ──────")
     print(await agent.search_item("samuel"))
