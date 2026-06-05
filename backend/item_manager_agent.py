@@ -4,7 +4,7 @@ from pathlib import Path
 
 
 class ItemAgent:
-    def __init__(self, items_file_path: str = "items.json"):
+    def __init__(self, items_file_path: str = "backend/items.json"):
         self.items_file_path = items_file_path
 
     # ─────────────────────────────────────────────
@@ -37,12 +37,26 @@ class ItemAgent:
     # Public API
     # ─────────────────────────────────────────────
 
-    async def read_categories(self) -> list:
+    async def read_categories(self, fc=None) -> str:
         """Return a list of all category names."""
-        data = await self._load()
+        print(f"[ItemAgent] read_categories called with fc: {fc}")
+
+        print(f"[ItemAgent] Reading categories from '{self.items_file_path}'")
+        try:
+            data = await self._load()
+        except Exception as e:
+            print(f"[ItemAgent] Error reading categories: {e}")
+            return "Error reading categories."
+        
         return f"The list of categories is: {list(data.keys())}"
 
-    async def add_category(self, category_name: str, description: str) -> bool:
+    async def add_category(self, fc) -> str:
+
+        print(f"[ItemAgent] add_category called with fc: {fc}")
+
+        category_name = fc.args["category_name"]
+        description = fc.args["description"]
+
         """
         Add a new category.
         Returns False (without changes) if the category already exists.
@@ -57,29 +71,42 @@ class ItemAgent:
             "description": description,
             "items": {}
         }
-        await self._save(data)
-        return f"Category '{category_name}' added successfully."
+        try:
+            await self._save(data)
+            return f"Category '{category_name}' added successfully."
+        except Exception as e:
+            print(f"[ItemAgent] Error saving data: {e}")
+            return f"Error adding category '{category_name}' with error: {e}"
+        
 
-    async def item_exists(self, category_name: str, item_name: str) -> bool:
+    async def item_exists(self, fc) -> bool:
+
+        print(f"[ItemAgent] item_exists called with fc: {fc}")
+
         """Return True if the item exists inside the given category."""
         data = await self._load()
+
+        category_name = fc.args["category_name"]
+        item_name = fc.args["item_name"]
 
         if category_name not in data:
             return False
 
-        return item_name in data[category_name].get("items", {})
+        return True if item_name in data[category_name].get("items", {}) else False
 
-    async def add_item(
-        self,
-        category_name: str,
-        item_name: str,
-        value: str
-    ) -> bool:
+    async def add_item(self, fc) -> str:
+
+        print(f"[ItemAgent] add_item called with fc: {fc}")
+
         """
         Add a new item to a category.
         Returns False if the category doesn't exist or the item already exists.
         """
         data = await self._load()
+
+        category_name = fc.args["category_name"]
+        item_name = fc.args["item_name"]
+        value = fc.args["value"]
 
         if category_name not in data:
             print(f"[ItemAgent] Category '{category_name}' not found.")
@@ -92,10 +119,14 @@ class ItemAgent:
             return f"Item '{item_name}' already exists in '{category_name}'."
 
         items[item_name] = {"value": value}
-        await self._save(data)
-        return f"Item '{item_name}' added to category '{category_name}' successfully."
+        try:
+            await self._save(data)
+            return f"Item '{item_name}' added to category '{category_name}' successfully."
+        except Exception as e:
+            print(f"[ItemAgent] Error saving data: {e}")
+            return f"Error adding item '{item_name}' to category '{category_name}' with error: {e}"
 
-    async def search_item(self, query: str) -> list:
+    async def search_item(self, fc) -> str:
         """
         Search across all categories for items whose name or value
         contains the query string (case-insensitive).
@@ -110,6 +141,9 @@ class ItemAgent:
                 ...
             ]
         """
+        print(f"[ItemAgent] search_item called with fc: {fc}")
+
+        query = fc.args["query"]
         data = await self._load()
         query_lower = query.lower()
         results = []
@@ -125,14 +159,16 @@ class ItemAgent:
                         "value": value
                     })
 
-        return results
+        return f"Search results for '{query}': {results}" if results else f"No items found matching '{query}'."
 
-    async def update_item(
-        self,
-        category_name: str,
-        item_name: str,
-        new_value: str
-    ) -> bool:
+    async def update_item(self, fc) -> str:
+
+        print(f"[ItemAgent] update_item called with fc: {fc}")
+
+        category_name = fc.args["category_name"]
+        item_name = fc.args["item_name"]
+        new_value = fc.args["new_value"]
+
         """
         Update the value of an existing item.
         Returns False if the category or item doesn't exist.
@@ -153,12 +189,18 @@ class ItemAgent:
         await self._save(data)
         return f"Item '{item_name}' updated in category '{category_name}' successfully."
 
-    async def remove_item(self, category_name: str, item_name: str) -> bool:
+    async def remove_item(self, fc) -> str:
+
+        print(f"[ItemAgent] remove_item called with fc: {fc}")
+
         """
         Remove an item from a category.
         Returns False if the category or item doesn't exist.
         """
         data = await self._load()
+
+        category_name = fc.args["category_name"]
+        item_name = fc.args["item_name"]
 
         if category_name not in data:
             print(f"[ItemAgent] Category '{category_name}' not found.")
@@ -176,6 +218,9 @@ class ItemAgent:
     
     async def handle_function_call(self, fc):
         """Handle a function call from the agent."""
+
+        print(f"[ItemAgent] Handling function call: {fc.name} with args: {fc.args}")
+
         func_map = {
             "read_categories": self.read_categories,
             "add_category": self.add_category,
@@ -192,8 +237,7 @@ class ItemAgent:
             return None
 
         # Extract arguments and call the function
-        args = fc.args or {}
-        return await func(**args)
+        return await func(fc)
 
 
 # ─────────────────────────────────────────────────
@@ -204,32 +248,32 @@ async def _demo():
     items_file_path = "backend/items.json"
     agent = ItemAgent(items_file_path)
 
-    print(await agent.read_categories())
+    # print(await agent.read_categories())
 
-    print("\n── add_category ─────────────────────────────")
-    print(await agent.add_category("ds", "email adresses"))
+    # print("\n── add_category ─────────────────────────────")
+    # print(await agent.add_category("ds", "email adresses"))
 
-    print("\n── add_item ─────────────────────────────────")
-    print(await agent.add_item("emails", "sam", "sam@example.com"))
+    # print("\n── add_item ─────────────────────────────────")
+    # print(await agent.add_item("test", "sam", "sam@example.com"))
 
-    print("\n── item_exists ──────────────────────────────")
-    print(await agent.item_exists("emails", "Sam"))      # True
-    print(await agent.item_exists("emails", "Ghost"))    # False
+    # print("\n── item_exists ──────────────────────────────")
+    # print(await agent.item_exists("emails", "Sam"))      # True
+    # print(await agent.item_exists("emails", "Ghost"))    # False
 
-    print("\n── search_item ('sam') ──────────────────────")
-    print(await agent.search_item("sam"))
+    # print("\n── search_item ('sam') ──────────────────────")
+    # print(await agent.search_item("sam"))
 
-    print("\n── update_item ──────────────────────────────")
-    print(await agent.update_item("emails", "sam", "samuel@newdomain.com"))   
+    # print("\n── update_item ──────────────────────────────")
+    # print(await agent.update_item("emails", "sam", "samuel@newdomain.com"))   
 
-    print("\n── search_item after update ('samuel') ──────")
-    print(await agent.search_item("samuel"))
+    # print("\n── search_item after update ('samuel') ──────")
+    # print(await agent.search_item("samuel"))
 
-    print("\n── remove_item ──────────────────────────────")
-    print(await agent.remove_item("phone_numbers", "Dad"))
+    # print("\n── remove_item ──────────────────────────────")
+    # print(await agent.remove_item("phone_numbers", "Dad"))
 
-    print("\n── final categories ─────────────────────────")
-    print(await agent.read_categories())
+    # print("\n── final categories ─────────────────────────")
+    print(await agent.read_categories(fc=None))
 
 
 if __name__ == "__main__":
