@@ -21,5 +21,5 @@
     ],
     "kasa_devices": [],
     "door_devices": [],
-    "camera_flipped": false
+    "camera_flipped": true
 }
