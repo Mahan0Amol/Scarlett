@@ -29,6 +29,7 @@ if sys.version_info < (3, 11, 0):
     asyncio.ExceptionGroup = exceptiongroup.ExceptionGroup
 
 from tools import tools_list
+from item_manager_tools import item_manager_tools_list
 
 FORMAT = pyaudio.paInt16
 CHANNELS = 1
@@ -284,7 +285,7 @@ run_cmd_tool = {
     }
 }
 
-tools = [{'google_search': {}}, {"function_declarations": [generate_cad, run_web_agent, create_project_tool, press_key_on_keyboard, write_with_keyboard, switch_project_tool, list_projects_tool, list_smart_devices_tool, move_robot, control_light_tool, control_door_tool, discover_printers_tool, print_stl_tool, get_print_status_tool, iterate_cad_tool, send_email_tool, wait_and_delay, run_cmd_tool] + tools_list[0]['function_declarations'][1:]}]
+tools = [{'google_search': {}}, {"function_declarations": [generate_cad, run_web_agent, create_project_tool, press_key_on_keyboard, write_with_keyboard, switch_project_tool, list_projects_tool, list_smart_devices_tool, move_robot, control_light_tool, control_door_tool, discover_printers_tool, print_stl_tool, get_print_status_tool, iterate_cad_tool, send_email_tool, wait_and_delay, run_cmd_tool] + tools_list[0]['function_declarations'][1:] + item_manager_tools_list[0]['function_declarations']}]
 
 # --- CONFIG UPDATE: Enabled Transcription ---
 config = types.LiveConnectConfig(
@@ -339,7 +340,11 @@ config = types.LiveConnectConfig(
         "Step 5: Navigate into that folder, read the file names.\n"
         "Step 6: Open the movie file.\n"
         "This is the standard — apply the same structured thinking to every non-trivial task.\n\n"
-        
+
+        "INFORMATION MANAGEMENT:\n"
+        "You have all information organized and easily accessible in an file.\n\n"
+        "To access and manage information you have some tools: read_categories_tool, add_category_tool, add_item_tool, item_exists_tool, search_item_tool, update_item_tool, remove_item_tool. Use them to keep track of any information you need to remember for tasks or future reference. Always check if the info you need is already stored before asking Sir again.\n\n"
+
         "RECONNECTION:\n"
         "If connection was lost and restored, briefly acknowledge it ('Lost you for a sec, I'm back.') and resume naturally.\n",
     tools=tools,
@@ -362,6 +367,7 @@ from smart_agent import SmartAgent
 from printer_agent import PrinterAgent
 from email_agent import EmailAgent
 from cmd_agent import CmdAgent
+from item_manager_agent import ItemAgent
 
 email_agent = EmailAgent(
     email_config={
@@ -446,7 +452,7 @@ async def discover_light_devices(network: str = None, timeout: float = 2.0) -> l
     return found_devices
 
 class AudioLoop:
-    def __init__(self, video_mode=DEFAULT_MODE, on_audio_data=None, on_video_frame=None, on_cad_data=None, on_web_data=None, on_transcription=None, on_tool_confirmation=None, on_cad_status=None, on_cad_thought=None, on_project_update=None, on_device_update=None, on_error=None, input_device_index=None, input_device_name=None, output_device_index=None, kasa_agent=None, email_agent=None,  sio=None, client_sid=None):
+    def __init__(self, video_mode=DEFAULT_MODE, on_audio_data=None, on_video_frame=None, on_cad_data=None, on_web_data=None, on_transcription=None, on_tool_confirmation=None, on_cad_status=None, on_cad_thought=None, on_project_update=None, on_device_update=None, on_error=None, input_device_index=None, input_device_name=None, output_device_index=None, kasa_agent=None, email_agent=None,  sio=None, client_sid=None, item_agent=None):
         self.video_mode = video_mode
         self.on_audio_data = on_audio_data
         self.on_video_frame = on_video_frame
@@ -498,6 +504,7 @@ class AudioLoop:
         self.kasa_agent = kasa_agent if kasa_agent else KasaAgent()
         self.smart_agent = SmartAgent()
         self.printer_agent = PrinterAgent()
+        self.item_agent = ItemAgent()
 
         self.send_text_task = None
         self.stop_event = asyncio.Event()
@@ -959,7 +966,8 @@ class AudioLoop:
                         print("The tool was called")
                         function_responses = []
                         for fc in response.tool_call.function_calls:
-                            if fc.name in ["generate_cad", "run_web_agent", "write_file", "read_directory", "read_file", "create_project", "press_key_on_keyboard", "write_with_keyboard", "switch_project", "list_projects", "list_smart_devices", "move_robot", "control_light", "control_door", "discover_printers", "print_stl", "get_print_status", "iterate_cad", "send_email", "wait_and_delay", "run_cmd"]:
+                            print(f"[scarlett DEBUG] [TOOL] Detected tool call: '{fc.name}' with args: {fc.args}")
+                            if fc.name in ["generate_cad", "run_web_agent", "write_file", "read_directory", "read_file", "create_project", "press_key_on_keyboard", "write_with_keyboard", "switch_project", "list_projects", "list_smart_devices", "move_robot", "control_light", "control_door", "discover_printers", "print_stl", "get_print_status", "iterate_cad", "send_email", "wait_and_delay", "run_cmd", "add_item", "update_item", "remove_item", "read_categories", "add_category", "search_item", "item_exists"]:
                                 prompt = fc.args.get("prompt", "") # Prompt is not present for all tools
                                 
                                 # Check Permissions (Default to True if not set)
@@ -1472,6 +1480,21 @@ class AudioLoop:
                                     asyncio.create_task(_run_and_respond())
                                     # Don't append to function_responses — response is sent inside the task
                                     continue  # skip the outer function_responses.append
+
+                                elif fc.name in ["read_categories", "add_category", "item_exists", "add_item", "search_item", "update_item", "remove_item"]:
+
+                                    print(f"[scarlett DEBUG] [TOOL] Detected ItemAgent function call: '{fc.name}' with args: {fc.args}")
+
+                                    # Dispatch to item agent and await result
+                                    item_result = await self.item_agent.handle_function_call(fc)
+                                    function_response = types.FunctionResponse(
+                                        id=fc.id,
+                                        name=fc.name,
+                                        response={
+                                            "result": item_result
+                                        }
+                                    )
+                                    function_responses.append(function_response)
 
                         if function_responses:
                             await self.session.send_tool_response(function_responses=function_responses)
