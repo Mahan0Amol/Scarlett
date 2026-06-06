@@ -10,6 +10,18 @@ read_categories_tool = {
     }
 }
 
+read_category_items_tool = {
+    "name": "read_category_items",
+    "description": "Returns all items stored inside a specific category.",
+    "parameters": {
+        "type": "OBJECT",
+        "properties": {
+            "category_name": {"type": "STRING", "description": "The name of the category to read."}
+        },
+        "required": ["category_name"]
+    }
+}
+
 add_category_tool = {
     "name": "add_category",
     "description": "Creates a new category for organizing items.",
@@ -92,6 +104,7 @@ remove_item_tool = {
 # Export all tools
 item_manager_tools_list = [{"function_declarations": [
     read_categories_tool,
+    read_category_items_tool,
     add_category_tool,
     add_item_tool,
     item_exists_tool,
