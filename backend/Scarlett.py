@@ -332,18 +332,24 @@ config = types.LiveConnectConfig(
         "If a step requires Sir's input (e.g. choosing from a list), pause, present the options clearly, and wait.\n"
         "Never skip steps or rush to the end.\n\n"
 
+        "INFORMATION MANAGEMENT:\n"
+        "You have all information organized and easily accessible in an file.\n\n"
+        "To access and manage information you have some tools: read_categories_tool, add_category_tool, add_item_tool, item_exists_tool, search_item_tool, update_item_tool, remove_item_tool. Use them to keep track of any information you need to remember for tasks or future reference. Always check if the info you need is already stored before asking Sir again.\n\n"
+
+        "EXAMPLE FOR INFORMATION MANAGEMENT:\n"
+        "User say: 'Send an email to my dad about the weekend plans.'\n"
+        "Step 1: read all categories to see if a category for contacts exists.\n"
+        "Step 2: If it exsits, list all items in that category with 'read_category_items_tool' to retrieve the target email address. If it doesn't exist, ask Sir for the email address and then add it to a 'contacts' category for future use.\n"
+        "Step 3: Ssend the email and do the task.\n"
+
         "EXAMPLE — How to handle 'open a movie for me':\n"
-        "Step 1: Ask Sir where his movies are stored (if not known).\n"
+        "Step 1: Check if the movies folder is stored in the information file? If it doesn't exist, ask Sir where his movies are stored (if not known) then save it with the 'add_item_tool' in 'directories' category.\n"
         "Step 2: Navigate to that folder using CMD.\n"
         "Step 3: List the folder names and present them to Sir.\n"
         "Step 4: Wait for Sir to pick one.\n"
         "Step 5: Navigate into that folder, read the file names.\n"
         "Step 6: Open the movie file.\n"
         "This is the standard — apply the same structured thinking to every non-trivial task.\n\n"
-
-        "INFORMATION MANAGEMENT:\n"
-        "You have all information organized and easily accessible in an file.\n\n"
-        "To access and manage information you have some tools: read_categories_tool, add_category_tool, add_item_tool, item_exists_tool, search_item_tool, update_item_tool, remove_item_tool. Use them to keep track of any information you need to remember for tasks or future reference. Always check if the info you need is already stored before asking Sir again.\n\n"
 
         "RECONNECTION:\n"
         "If connection was lost and restored, briefly acknowledge it ('Lost you for a sec, I'm back.') and resume naturally.\n",
@@ -967,7 +973,7 @@ class AudioLoop:
                         function_responses = []
                         for fc in response.tool_call.function_calls:
                             print(f"[scarlett DEBUG] [TOOL] Detected tool call: '{fc.name}' with args: {fc.args}")
-                            if fc.name in ["generate_cad", "run_web_agent", "write_file", "read_directory", "read_file", "create_project", "press_key_on_keyboard", "write_with_keyboard", "switch_project", "list_projects", "list_smart_devices", "move_robot", "control_light", "control_door", "discover_printers", "print_stl", "get_print_status", "iterate_cad", "send_email", "wait_and_delay", "run_cmd", "add_item", "update_item", "remove_item", "read_categories", "add_category", "search_item", "item_exists"]:
+                            if fc.name in ["generate_cad", "run_web_agent", "write_file", "read_directory", "read_file", "create_project", "press_key_on_keyboard", "write_with_keyboard", "switch_project", "list_projects", "list_smart_devices", "move_robot", "control_light", "control_door", "discover_printers", "print_stl", "get_print_status", "iterate_cad", "send_email", "wait_and_delay", "run_cmd", "add_item", "update_item", "remove_item", "read_categories", "read_category_items", "add_category", "search_item", "item_exists"]:
                                 prompt = fc.args.get("prompt", "") # Prompt is not present for all tools
                                 
                                 # Check Permissions (Default to True if not set)
@@ -1481,7 +1487,7 @@ class AudioLoop:
                                     # Don't append to function_responses — response is sent inside the task
                                     continue  # skip the outer function_responses.append
 
-                                elif fc.name in ["read_categories", "add_category", "item_exists", "add_item", "search_item", "update_item", "remove_item"]:
+                                elif fc.name in ["read_categories", "read_category_items", "add_category", "item_exists", "add_item", "search_item", "update_item", "remove_item"]:
 
                                     print(f"[scarlett DEBUG] [TOOL] Detected ItemAgent function call: '{fc.name}' with args: {fc.args}")
 

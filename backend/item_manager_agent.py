@@ -49,6 +49,22 @@ class ItemAgent:
             return "Error reading categories."
         
         return f"The list of categories is: {list(data.keys())}"
+    
+    async def read_category_items(self, fc) -> str:
+        """Return all items inside a given category."""
+        print(f"[ItemAgent] read_category_items called with fc: {fc}")
+
+        category_name = fc.args["category_name"]
+        data = await self._load()
+
+        if category_name not in data:
+            return f"Category '{category_name}' not found."
+
+        items = data[category_name].get("items", {})
+        if not items:
+            return f"Category '{category_name}' exists but has no items."
+
+        return f"Items in '{category_name}': {items}"
 
     async def add_category(self, fc) -> str:
 
@@ -223,6 +239,7 @@ class ItemAgent:
 
         func_map = {
             "read_categories": self.read_categories,
+            "read_category_items": self.read_category_items,
             "add_category": self.add_category,
             "item_exists": self.item_exists,
             "add_item": self.add_item,
