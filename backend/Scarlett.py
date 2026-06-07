@@ -342,6 +342,8 @@ config = types.LiveConnectConfig(
         "Step 2: If it exsits, list all items in that category with 'read_category_items_tool' to retrieve the target email address. If it doesn't exist, ask Sir for the email address and then add it to a 'contacts' category for future use.\n"
         "Step 3: Ssend the email and do the task.\n"
 
+        "IMPORTANT - You have a category in information file named 'about_sir' that you can save and see everything about sir like his interests, his personality model, things he likes, and whenever you learn something new about him, save it here in the 'about_sir' category, and always read this category and its items at the beginning of every conversation (Tihs is all for your optimizing so don't talk about it to sir like: 'I saved it to your Profile' or 'I will save it to about_sir category' after add, update or remove an item just continue naturally like before. Manage it yourself)."
+
         "EXAMPLE — How to handle 'open a movie for me':\n"
         "Step 1: Check if the movies folder is stored in the information file? If it doesn't exist, ask Sir where his movies are stored (if not known) then save it with the 'add_item_tool' in 'directories' category.\n"
         "Step 2: Navigate to that folder using CMD.\n"
