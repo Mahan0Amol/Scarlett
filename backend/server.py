@@ -104,6 +104,7 @@ from authenticator import FaceAuthenticator
 from kasa_agent import KasaAgent
 from smart_agent import SmartAgent
 from cmd_agent import CmdAgent
+from music_agent import MusicAgent
 
 # Create a Socket.IO server
 sio = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins='*')
@@ -136,6 +137,7 @@ authenticator = None
 kasa_agent = KasaAgent()
 SmartAgent = SmartAgent()
 cmd_agent = CmdAgent()
+music_agent = MusicAgent(musics_folder="E:/Users/aramis/Music", sio=sio)
 SETTINGS_FILE = "settings.json"
 
 DEFAULT_SETTINGS = {
@@ -1161,6 +1163,75 @@ async def autocomplete_cmd(sid, data):
     
     if matches:
         await sio.emit('cmd_autocomplete', {'matches': matches}, room=sid)
+
+
+# ====================== MUSIC PLAYER ======================
+
+@sio.event
+async def music_play(sid, data=None):
+    global music_agent
+    if music_agent:
+        position = int(music_agent.player.get_position() * (music_agent.player.get_length() / 1000)) if music_agent.player.get_length() > 0 else 0
+        music_agent.unpause()
+        await sio.emit('music_state', {
+            **music_agent.current_metadata,
+            "isPlaying": True,
+            "position": position
+        })
+
+
+@sio.event
+async def music_pause(sid, data=None):
+    global music_agent
+    if music_agent:
+        position = int(music_agent.player.get_position() * (music_agent.player.get_length() / 1000)) if music_agent.player.get_length() > 0 else 0
+        music_agent.pause()
+        await sio.emit('music_state', {
+            **music_agent.current_metadata,
+            "isPlaying": False,
+            "position": position
+        })
+
+
+@sio.event
+async def music_next(sid, data=None):
+    global music_agent
+    if music_agent:
+        metadata = music_agent.next_track()
+        if metadata:
+            await sio.emit('music_state', {**metadata, "isPlaying": True})
+
+
+@sio.event
+async def music_prev(sid, data=None):
+    global music_agent
+    if music_agent:
+        metadata = music_agent.prev_track()
+        if metadata:
+            await sio.emit('music_state', {**metadata, "isPlaying": True})
+
+
+@sio.event
+async def music_seek(sid, data):
+    global music_agent
+    if music_agent and data and 'position' in data:
+        music_agent.seek(int(data['position']))
+
+
+@sio.event
+async def music_volume(sid, data):
+    global music_agent
+    if music_agent and data and 'volume' in data:
+        music_agent.set_volume(int(data['volume']))
+
+
+@sio.event
+async def music_stop(sid, _=None):  # stop music
+    global music_agent
+    if music_agent:
+        music_agent.stop()
+        await sio.emit('music_state', {'isPlaying': False})
+
 
 if __name__ == "__main__":
     uvicorn.run(
