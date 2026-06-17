@@ -15,6 +15,7 @@ import AuthLock from './components/AuthLock';
 import KasaWindow from './components/KasaWindow';
 import DoorWindow from './components/DoorWindow';
 import PrinterWindow from './components/PrinterWindow';
+import MusicWindow from './components/MusicWindow';
 import SettingsWindow from './components/SettingsWindow';
 
 
@@ -61,6 +62,7 @@ function App() {
     const [showDoorWindow, setShowDoorWindow] = useState(false);
     const [showCmdWindow, setShowCmdWindow] = useState(true);
     const [showPrinterWindow, setShowPrinterWindow] = useState(false);
+    const [showMusicWindow, setShowMusicWindow] = useState(false);
     const [showCadWindow, setShowCadWindow] = useState(false);
     const [showBrowserWindow, setShowBrowserWindow] = useState(false);
 
@@ -100,7 +102,8 @@ function App() {
         door: { x: window.innerWidth / 2 + 350, y: window.innerHeight / 2 - 100 },
         printer: { x: window.innerWidth / 2 - 350, y: window.innerHeight / 2 - 100 },
         tools: { x: 0, y: 0 }, // Fixed bottom OFFSET
-        cmd: { x: 280, y: window.innerHeight / 2 }
+        cmd: { x: 280, y: window.innerHeight / 2 },
+        music: { x: window.innerWidth / 2 - 300, y: window.innerHeight / 2 - 100 }
     });
 
     const [elementSizes, setElementSizes] = useState({
@@ -118,7 +121,7 @@ function App() {
 
     // Z-Index Stacking Order (last element = highest z-index)
     const [zIndexOrder, setZIndexOrder] = useState([
-        'visualizer', 'chat', 'tools', 'video', 'cad', 'browser', 'kasa','door', 'printer', 'cmd'
+        'cmd', 'visualizer', 'chat', 'tools', 'video', 'cad', 'browser', 'kasa','door', 'printer', 'music'
     ]);
 
     // Hand Control State
@@ -643,6 +646,24 @@ function App() {
             }
         };
         initHandLandmarker();
+
+        socket.on('open_music_window', () => {
+            setShowMusicWindow(true);
+            
+            // Auto-position if not placed yet
+            if (!elementPositions.music) {
+                const size = { w: 320, h: 430 }; // Adjust to your MusicWindow size
+                const clamped = clampToViewport({ 
+                    x: window.innerWidth / 2 - 150, 
+                    y: window.innerHeight / 2 - 100 
+                }, size);
+                
+                setElementPositions(prev => ({
+                    ...prev,
+                    music: clamped
+                }));
+            }
+        });
 
         return () => {
             socket.off('connect');
@@ -1359,6 +1380,10 @@ function App() {
         setShowPrinterWindow(!showPrinterWindow);
     };
 
+    const toggleMusicWindow = () => {
+        setShowMusicWindow(!showMusicWindow)
+    }
+
 
 
     return (
@@ -1674,6 +1699,19 @@ function App() {
                         activeDragElement={activeDragElement}
                         setActiveDragElement={setActiveDragElement}
                         zIndex={getZIndex('printer')}
+                    />
+                )}
+
+                {/* Music Window */}
+                {showMusicWindow && (
+                    <MusicWindow
+                        socket={socket}
+                        onClose={() => setShowMusicWindow(false)}
+                        position={elementPositions.music}
+                        onMouseDown={(e) => handleMouseDown(e, 'music')}
+                        activeDragElement={activeDragElement}
+                        setActiveDragElement={setActiveDragElement}
+                        zIndex={getZIndex('music')}
                     />
                 )}
 
