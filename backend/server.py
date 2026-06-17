@@ -1168,7 +1168,13 @@ async def autocomplete_cmd(sid, data):
 # ====================== MUSIC PLAYER ======================
 
 @sio.event
-async def music_play(sid, data=None):
+async def open_music_window(sid, data):
+    print(f"[SERVER] AI requested to open music window: {data}")
+    
+    await sio.emit('open_music_window', room=sid)
+
+@sio.event
+async def music_play(sid):
     global music_agent
     if music_agent:
         position = int(music_agent.player.get_position() * (music_agent.player.get_length() / 1000)) if music_agent.player.get_length() > 0 else 0
@@ -1181,7 +1187,7 @@ async def music_play(sid, data=None):
 
 
 @sio.event
-async def music_pause(sid, data=None):
+async def music_pause(sid):
     global music_agent
     if music_agent:
         position = int(music_agent.player.get_position() * (music_agent.player.get_length() / 1000)) if music_agent.player.get_length() > 0 else 0
