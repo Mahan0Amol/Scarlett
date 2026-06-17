@@ -1177,66 +1177,107 @@ async def open_music_window(sid, data):
 async def music_play(sid):
     global music_agent
     if music_agent:
-        position = int(music_agent.player.get_position() * (music_agent.player.get_length() / 1000)) if music_agent.player.get_length() > 0 else 0
         music_agent.unpause()
         await sio.emit('music_state', {
             **music_agent.current_metadata,
             "isPlaying": True,
-            "position": position
         })
 
+
+@sio.event
+async def music_state_request(sid):
+    global music_agent
+
+    if music_agent:
+        await sio.emit(
+            "music_state",
+            music_agent.get_current_state(),
+            room=sid
+        )
 
 @sio.event
 async def music_pause(sid):
     global music_agent
     if music_agent:
-        position = int(music_agent.player.get_position() * (music_agent.player.get_length() / 1000)) if music_agent.player.get_length() > 0 else 0
         music_agent.pause()
         await sio.emit('music_state', {
             **music_agent.current_metadata,
             "isPlaying": False,
-            "position": position
         })
 
 
 @sio.event
 async def music_next(sid, data=None):
     global music_agent
+
     if music_agent:
-        metadata = music_agent.next_track()
-        if metadata:
-            await sio.emit('music_state', {**metadata, "isPlaying": True})
+        music_agent.current_metadata = music_agent.next_track()
+
+        if music_agent.current_metadata:
+            await sio.emit(
+                "music_state",
+                music_agent.get_current_state()
+            )
 
 
 @sio.event
 async def music_prev(sid, data=None):
     global music_agent
+
     if music_agent:
-        metadata = music_agent.prev_track()
-        if metadata:
-            await sio.emit('music_state', {**metadata, "isPlaying": True})
+        music_agent.current_metadata = music_agent.prev_track()
+
+        if music_agent.current_metadata:
+            await sio.emit(
+                "music_state",
+                music_agent.get_current_state()
+            )
 
 
 @sio.event
 async def music_seek(sid, data):
     global music_agent
+
     if music_agent and data and 'position' in data:
         music_agent.seek(int(data['position']))
 
+        await sio.emit(
+            "music_state",
+            music_agent.get_current_state()
+        )
 
 @sio.event
 async def music_volume(sid, data):
     global music_agent
+
     if music_agent and data and 'volume' in data:
         music_agent.set_volume(int(data['volume']))
 
+        await sio.emit(
+            "music_state",
+            music_agent.get_current_state()
+        )
+
 
 @sio.event
-async def music_stop(sid, _=None):  # stop music
+async def music_stop(sid, _=None):
     global music_agent
+
     if music_agent:
         music_agent.stop()
-        await sio.emit('music_state', {'isPlaying': False})
+
+        await sio.emit(
+            "music_state",
+            {
+                "title": "No Track Selected",
+                "artist": "Unknown Artist",
+                "duration": 0,
+                "thumb": None,
+                "position": 0,
+                "isPlaying": False,
+                "volume": music_agent.player.audio_get_volume()
+            }
+        )
 
 
 if __name__ == "__main__":

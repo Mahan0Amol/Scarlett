@@ -8,7 +8,23 @@ import base64
 
 
 class MusicAgent:
+
+    _instance = None
+
+    def __new__(cls, musics_folder=None, sio=None):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+            cls._instance._initialized = False
+        return cls._instance
+    
+
     def __init__(self, musics_folder, sio):
+
+        if self._initialized:
+            return
+        
+        self._initialized = True
+
         self.instance = vlc.Instance()
         self.musics_folder = musics_folder
         self.sio = sio  # Socket.IO instance for emitting updates
@@ -51,6 +67,28 @@ class MusicAgent:
                 "duration": 0,
                 "thumb": None
             }
+        
+    def get_current_state(self):
+        position = 0
+
+        try:
+            length = self.player.get_length()
+            if length > 0:
+                position = int(self.player.get_time() / 1000)
+        except Exception:
+            pass
+
+        return {
+            **(self.current_metadata or {
+                "title": "No Track Selected",
+                "artist": "Unknown Artist",
+                "duration": 0,
+                "thumb": None
+            }),
+            "position": position,
+            "isPlaying": self.player.get_state() == vlc.State.Playing,
+            "volume": self.player.audio_get_volume()
+        }
 
     async def search_music(self, fc):
 
@@ -93,10 +131,17 @@ class MusicAgent:
             self.player.set_media(media)
             self.player.play()
 
+            await asyncio.sleep(0.2)
+
+            if self.sio:
+                await self.sio.emit(
+                    "music_state",
+                    self.get_current_state()
+                )
+
             # Start auto position updater
-            if self._update_task:
-                self._update_task.cancel()
-            self._update_task = asyncio.create_task(self._position_updater())
+            if not hasattr(self, "_tick_task") or self._tick_task is None:
+                self._tick_task = asyncio.create_task(self._tick_stream())
 
             # return self.current_metadata
             return f'Music {self.current_song_path} is playing now'
@@ -104,24 +149,52 @@ class MusicAgent:
             return f'There was an error while playing the song: {e}'
 
     async def _position_updater(self):
-        """Send live position updates every 500ms"""
+        last_emit = 0
+
         while True:
             try:
-                if self.player.get_state() == vlc.State.Playing and self.sio:
-                    position = int(self.player.get_position() * (self.player.get_length() / 1000)) if self.player.get_length() > 0 else 0
-                    try:    
-                        await self.sio.emit('music_state', {
-                            **self.current_metadata,
-                            "position": position,
-                            "isPlaying": True
-                        })
-                    except Exception as e:
-                        print(f"[MusicAgent] Socket emit error: {e}")
-                await asyncio.sleep(0.5)
+                now = asyncio.get_event_loop().time()
+
+                # 10 times per second (smooth UI)
+                if self.sio:
+                    await self.sio.emit("music_state", {
+                        **self.current_metadata,
+                        "isPlaying": True
+                    })
+
+                await asyncio.sleep(0.05)
+
             except asyncio.CancelledError:
                 break
+
             except Exception as e:
                 print(f"[MusicAgent] Updater error: {e}")
+                await asyncio.sleep(1)
+
+    async def _tick_stream(self):
+        while True:
+            try:
+                if self.player and self.player.get_length() > 0:
+                    position = self.player.get_time() // 1000
+                    duration = self.player.get_length() // 1000
+
+                    if self.sio:
+                        await self.sio.emit(
+                            "music_tick",
+                            {
+                                "position": position,
+                                "duration": duration,
+                                "isPlaying": self.player.get_state() == vlc.State.Playing
+                            }
+                        )
+
+                await asyncio.sleep(0.25)  # 4 updates per second
+
+            except asyncio.CancelledError:
+                break
+
+            except Exception as e:
+                print("[MusicAgent tick error]", e)
                 await asyncio.sleep(1)
 
     def next_track(self):
@@ -153,11 +226,33 @@ class MusicAgent:
     def stop(self):
         if self._update_task:
             self._update_task.cancel()
+
         self.player.stop()
+
+        self.current_song_path = None
+        self.current_index = -1
+        self.playlist = []
+
+        self.current_metadata = {
+            "title": "No Track Selected",
+            "artist": "Unknown Artist",
+            "duration": 0,
+            "thumb": None
+        }
 
     def seek(self, position_seconds: int):
         if self.player.get_length() > 0:
-            self.player.set_position(position_seconds / (self.player.get_length() / 1000))
+            self.player.set_position(
+                position_seconds / (self.player.get_length() / 1000)
+            )
+
+        if self.sio:
+            asyncio.create_task(
+                self.sio.emit(
+                    "music_state",
+                    self.get_current_state()
+                )
+            )
 
     def set_volume(self, volume: int):
         self.player.audio_set_volume(max(0, min(100, volume)))
@@ -168,36 +263,67 @@ class MusicAgent:
         if action == 'pause':
             try:
                 self.pause()
-                await self.sio.emit('music_state', {
-                    **self.current_metadata,
-                    "isPlaying": False
-                })
+
+                if self.sio:
+                    await self.sio.emit(
+                        "music_state",
+                        self.get_current_state()
+                    )
+
                 return 'Music paused successfully'
+
             except Exception as e:
                 return f'There was an error when pausing the music : {e}'
             
         elif action == 'unpause':
             try:
                 self.unpause()
-                await self.sio.emit('music_state', {
-                    **self.current_metadata,
-                    "isPlaying": True
-                })
+
+                if self.sio:
+                    await self.sio.emit(
+                        "music_state",
+                        self.get_current_state()
+                    )
+
                 return 'Music resumed successfully'
+
             except Exception as e:
                 return f'There was an error when unpausing the music : {e}'
             
         elif action == 'next':
             try:
-                self.next_track()
+
+                self.current_metadata = self.next_track()
+
+                await asyncio.sleep(0.15)
+
+                if self.sio:
+                    await self.sio.emit(
+                        "music_state",
+                        self.get_current_state()
+                    )
+
                 return 'Next track played successfully'
+
             except Exception as e:
                 return f'There was an error when playing next track: {e}'
-            
+
+
         elif action == 'previous':
             try:
-                self.prev_track()
+
+                self.current_metadata = self.prev_track()
+
+                await asyncio.sleep(0.15)
+
+                if self.sio:
+                    await self.sio.emit(
+                        "music_state",
+                        self.get_current_state()
+                    )
+
                 return 'Previous track played successfully'
+
             except Exception as e:
                 return f'There was an error when playing previous track: {e}'
 
