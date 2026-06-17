@@ -30,6 +30,7 @@ if sys.version_info < (3, 11, 0):
 
 from tools import tools_list
 from item_manager_tools import item_manager_tools_list
+from music_tools import music_tools_list
 
 FORMAT = pyaudio.paInt16
 CHANNELS = 1
@@ -285,7 +286,7 @@ run_cmd_tool = {
     }
 }
 
-tools = [{'google_search': {}}, {"function_declarations": [generate_cad, run_web_agent, create_project_tool, press_key_on_keyboard, write_with_keyboard, switch_project_tool, list_projects_tool, list_smart_devices_tool, move_robot, control_light_tool, control_door_tool, discover_printers_tool, print_stl_tool, get_print_status_tool, iterate_cad_tool, send_email_tool, wait_and_delay, run_cmd_tool] + tools_list[0]['function_declarations'][1:] + item_manager_tools_list[0]['function_declarations']}]
+tools = [{'google_search': {}}, {"function_declarations": [generate_cad, run_web_agent, create_project_tool, press_key_on_keyboard, write_with_keyboard, switch_project_tool, list_projects_tool, list_smart_devices_tool, move_robot, control_light_tool, control_door_tool, discover_printers_tool, print_stl_tool, get_print_status_tool, iterate_cad_tool, send_email_tool, wait_and_delay, run_cmd_tool] + tools_list[0]['function_declarations'][1:] + item_manager_tools_list[0]['function_declarations'] + music_tools_list[0]['function_declarations']}]
 
 # --- CONFIG UPDATE: Enabled Transcription ---
 config = types.LiveConnectConfig(
@@ -376,6 +377,7 @@ from printer_agent import PrinterAgent
 from email_agent import EmailAgent
 from cmd_agent import CmdAgent
 from item_manager_agent import ItemAgent
+from music_agent import MusicAgent
 
 email_agent = EmailAgent(
     email_config={
@@ -513,6 +515,7 @@ class AudioLoop:
         self.smart_agent = SmartAgent()
         self.printer_agent = PrinterAgent()
         self.item_agent = ItemAgent()
+        self.music_agent = MusicAgent("E:/Users/aramis/Music", self.sio)
 
         self.send_text_task = None
         self.stop_event = asyncio.Event()
@@ -975,7 +978,7 @@ class AudioLoop:
                         function_responses = []
                         for fc in response.tool_call.function_calls:
                             print(f"[scarlett DEBUG] [TOOL] Detected tool call: '{fc.name}' with args: {fc.args}")
-                            if fc.name in ["generate_cad", "run_web_agent", "write_file", "read_directory", "read_file", "create_project", "press_key_on_keyboard", "write_with_keyboard", "switch_project", "list_projects", "list_smart_devices", "move_robot", "control_light", "control_door", "discover_printers", "print_stl", "get_print_status", "iterate_cad", "send_email", "wait_and_delay", "run_cmd", "add_item", "update_item", "remove_item", "read_categories", "read_category_items", "add_category", "search_item", "item_exists"]:
+                            if fc.name in ["generate_cad", "run_web_agent", "write_file", "read_directory", "read_file", "create_project", "press_key_on_keyboard", "write_with_keyboard", "switch_project", "list_projects", "list_smart_devices", "move_robot", "control_light", "control_door", "discover_printers", "print_stl", "get_print_status", "iterate_cad", "send_email", "wait_and_delay", "run_cmd", "add_item", "update_item", "remove_item", "read_categories", "read_category_items", "add_category", "search_item", "item_exists", "search_music", "play_music", "control_music"]:
                                 prompt = fc.args.get("prompt", "") # Prompt is not present for all tools
                                 
                                 # Check Permissions (Default to True if not set)
@@ -1500,6 +1503,28 @@ class AudioLoop:
                                         name=fc.name,
                                         response={
                                             "result": item_result
+                                        }
+                                    )
+                                    function_responses.append(function_response)
+
+                                elif fc.name in ["search_music", "play_music", "control_music"]:
+
+                                    if fc.name == "play_music":
+                                        if self.sio and self.client_sid:
+                                            await self.sio.emit('open_music_window', room=self.client_sid)
+
+                                    print(f"[scarlett DEBUG] [TOOL] Detected MusicAgent function call: '{fc.name}' with args: {fc.args}")
+
+                                    # Dispatch to music agent and await result
+                                    music_result = await self.music_agent.handle_function_call(fc)
+
+                                    print(f"[scarlett debug] The result for {fc.name} is {music_result}")
+
+                                    function_response = types.FunctionResponse(
+                                        id=fc.id,
+                                        name=fc.name,
+                                        response={
+                                            "result": music_result
                                         }
                                     )
                                     function_responses.append(function_response)
