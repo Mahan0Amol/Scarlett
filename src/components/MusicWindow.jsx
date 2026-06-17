@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import {X, Music, Play, Pause, SkipBack, SkipForward, Volume2 } from "lucide-react";
+import {X, Music, Disc3, Play, Pause, SkipBack, SkipForward, Volume2 } from "lucide-react";
 
 const formatTime = (seconds = 0) => {
     const mins = Math.floor(seconds / 60);
@@ -151,14 +151,20 @@ const MusicWindow = ({
                         ${isPlaying ? "scale-[1.02]" : ""}
                     `}
                 >
-                    <img
-                        src={
-                            track.thumb ||
-                            "https://via.placeholder.com/300"
-                        }
-                        alt={track.title}
-                        className="w-full h-full object-cover"
-                    />
+                    {
+                        track.thumb && !imgError ? (
+                            <img
+                                src={track.thumb}
+                                alt={track.title}
+                                onError={() => setImgError(true)}
+                                className="w-full h-full object-cover"
+                            />
+                        ) : (
+                            <div className="w-full h-full flex items-center justify-center bg-zinc-800">
+                                <Disc3  size={80} className="text-zinc-500" />
+                            </div>
+                        )
+                    }
                 </div>
 
                 {/* INFO */}
