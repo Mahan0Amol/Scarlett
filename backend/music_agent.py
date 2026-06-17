@@ -52,32 +52,56 @@ class MusicAgent:
                 "thumb": None
             }
 
+    async def search_music(self, fc):
+
+        query = fc.args["query"]
+
+        print(f"[MusicAgent] [find folders] Searching for music with query: '{query}' in folder: '{self.musics_folder}'")
+
+        base_dir = self.musics_folder
+        matches = []
+        for root, dirs, _ in os.walk(base_dir):
+            for d in dirs:
+                if query.lower() in d.lower():
+                    full_path = os.path.join(root, d)
+                    matches.append(os.path.normpath(full_path))
+        print(f"[MusicAgent] [find folders] Search query: '{query}' found matches: {matches}")
+        return f"The musics for your query are : {matches}"
+
     async def find_mp3_in_folder(self, folder_path: str):
         folder = Path(folder_path)
         if not folder.exists() or not folder.is_dir():
             return []
         return [str(f.resolve()) for f in folder.iterdir() if f.is_file() and f.suffix.lower() == ".mp3"]
 
-    async def play(self, music_folder: str):
-        self.playlist = await self.find_mp3_in_folder(music_folder)
-        if not self.playlist:
-            return {"error": "No mp3 files found"}
+    async def play(self, fc):
 
-        self.current_index = 0
-        self.current_song_path = self.playlist[0]
+        music_folder = fc.args["track_name"]
 
-        self.current_metadata = self.get_metadata(self.current_song_path)
+        try:
 
-        media = self.instance.media_new_path(self.current_song_path)
-        self.player.set_media(media)
-        self.player.play()
+            self.playlist = await self.find_mp3_in_folder(music_folder)
+            if not self.playlist:
+                return {"error": "No mp3 files found"}
 
-        # Start auto position updater
-        if self._update_task:
-            self._update_task.cancel()
-        self._update_task = asyncio.create_task(self._position_updater())
+            self.current_index = 0
+            self.current_song_path = self.playlist[0]
 
-        return self.current_metadata
+            self.current_metadata = self.get_metadata(self.current_song_path)
+
+            media = self.instance.media_new_path(self.current_song_path)
+            self.player.set_media(media)
+            self.player.play()
+
+            # Start auto position updater
+            if self._update_task:
+                self._update_task.cancel()
+            self._update_task = asyncio.create_task(self._position_updater())
+
+            # return self.current_metadata
+            return f'Music {self.current_song_path} is playing now'
+        except Exception as e:
+            return f'There was an error while playing the song: {e}'
 
     async def _position_updater(self):
         """Send live position updates every 500ms"""
@@ -137,3 +161,77 @@ class MusicAgent:
 
     def set_volume(self, volume: int):
         self.player.audio_set_volume(max(0, min(100, volume)))
+
+    async def handle_control_music(self, fc):
+        action = fc.args["action"]
+
+        if action == 'pause':
+            try:
+                self.pause()
+                await self.sio.emit('music_state', {
+                    **self.current_metadata,
+                    "isPlaying": False
+                })
+                return 'Music paused successfully'
+            except Exception as e:
+                return f'There was an error when pausing the music : {e}'
+            
+        elif action == 'unpause':
+            try:
+                self.unpause()
+                await self.sio.emit('music_state', {
+                    **self.current_metadata,
+                    "isPlaying": True
+                })
+                return 'Music resumed successfully'
+            except Exception as e:
+                return f'There was an error when unpausing the music : {e}'
+            
+        elif action == 'next':
+            try:
+                self.next_track()
+                return 'Next track played successfully'
+            except Exception as e:
+                return f'There was an error when playing next track: {e}'
+            
+        elif action == 'previous':
+            try:
+                self.prev_track()
+                return 'Previous track played successfully'
+            except Exception as e:
+                return f'There was an error when playing previous track: {e}'
+
+
+
+
+    async def handle_function_call(self, fc):
+        func_map = {
+            "search_music": self.search_music,
+            "play_music": self.play,
+            "control_music": self.handle_control_music,
+        }
+
+        func = func_map.get(fc.name)
+
+        print(f"[MusicAgent] Received function call: '{fc.name}' with args: {fc.args}")
+
+        if not func:
+            print(f"[MusicAgent] Unknown function call: {fc.name}")
+            return None
+
+        return await func(fc)
+
+
+async def _demo():
+    # Example usage
+    agent = MusicAgent("E:/Users/aramis/Music", None)
+    class FC:
+        def __init__(self, name, args):
+            self.name = name
+            self.args = args
+
+    search_fc = FC("play_music", {"track_name": "E:\\Users\\aramis\\Music\\Monster - Eminem"})
+    print(await agent.handle_function_call(search_fc))
+
+if __name__ == "__main__":
+    asyncio.run(_demo())
