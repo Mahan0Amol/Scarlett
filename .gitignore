@@ -2,7 +2,7 @@
 __pycache__/
 *.py[cod]
 *$py.class
-Scarlett_env/
+Scarlett_venv/
 .env
 venv/
 .venv/
