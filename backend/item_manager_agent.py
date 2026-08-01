@@ -1,11 +1,28 @@
 import json
+import os
+import shutil
 import asyncio
 from pathlib import Path
+from datetime import datetime
 
 
 class ItemAgent:
     def __init__(self, items_file_path: str = "backend/items.json"):
-        self.items_file_path = items_file_path
+        # Resolve relative paths against this file's directory, not the
+        # process's current working directory, so this works no matter
+        # where Scarlett.py is launched from. Absolute paths are left as-is.
+        p = Path(items_file_path)
+        if not p.is_absolute():
+            p = (Path(__file__).resolve().parent / p).resolve()
+        self.items_file_path = str(p)
+
+        # Backups live next to the data file.
+        self._backup_path = str(p.with_suffix(p.suffix + ".bak"))
+
+        # Guards concurrent read-modify-write cycles. Without this, two
+        # function calls arriving close together (very possible in an
+        # async agent) can clobber each other's changes.
+        self._lock = asyncio.Lock()
 
     # ─────────────────────────────────────────────
     # Private helpers
@@ -24,14 +41,62 @@ class ItemAgent:
             return {}
 
     async def _save(self, data: dict) -> bool:
-        """Write data back to disk. Returns True on success."""
+        """
+        Atomically write data back to disk. Returns True on success.
+
+        Writes to a temp file first and then swaps it into place with
+        os.replace(), so a crash or power loss mid-write can never leave
+        items.json half-written / corrupted. Also keeps a single-file
+        backup of the previous version before swapping.
+        """
+        target = Path(self.items_file_path)
+        tmp_path = target.with_suffix(target.suffix + ".tmp")
+
         try:
-            with open(self.items_file_path, "w", encoding="utf-8") as f:
+            target.parent.mkdir(parents=True, exist_ok=True)
+
+            with open(tmp_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=4, ensure_ascii=False)
+                f.flush()
+                os.fsync(f.fileno())
+
+            # Best-effort backup of the current file before we overwrite it.
+            if target.exists():
+                try:
+                    shutil.copyfile(target, self._backup_path)
+                except OSError as e:
+                    print(f"[ItemAgent] Warning: could not write backup: {e}")
+
+            os.replace(tmp_path, target)  # atomic on POSIX and Windows
             return True
-        except IOError as e:
+        except (IOError, OSError) as e:
             print(f"[ItemAgent] Failed to save file: {e}")
+            try:
+                if tmp_path.exists():
+                    tmp_path.unlink()
+            except OSError:
+                pass
             return False
+
+    @staticmethod
+    def _find_key_ci(d: dict, name: str):
+        """
+        Find the actual key in `d` matching `name` case-insensitively.
+        Returns the real key (preserving original casing) or None.
+        Prefers an exact match if one exists.
+        """
+        if name in d:
+            return name
+        name_lower = name.strip().lower()
+        for key in d:
+            if key.strip().lower() == name_lower:
+                return key
+        return None
+
+    @staticmethod
+    def _clean(value: str) -> str:
+        """Basic input validation: strip whitespace."""
+        return value.strip() if isinstance(value, str) else value
 
     # ─────────────────────────────────────────────
     # Public API
@@ -47,53 +112,60 @@ class ItemAgent:
         except Exception as e:
             print(f"[ItemAgent] Error reading categories: {e}")
             return "Error reading categories."
-        
-        return f"The list of categories is: {list(data.keys())}"
-    
+
+        summary = {name: cat.get("description", "") for name, cat in data.items()}
+        return f"The list of categories (with their descriptions) is: {json.dumps(summary, ensure_ascii=False, indent=2)}"
+
     async def read_category_items(self, fc) -> str:
         """Return all items inside a given category."""
         print(f"[ItemAgent] read_category_items called with fc: {fc}")
 
-        category_name = fc.args["category_name"]
+        category_name = self._clean(fc.args["category_name"])
         data = await self._load()
 
-        if category_name not in data:
+        real_category = self._find_key_ci(data, category_name)
+        if real_category is None:
             return f"Category '{category_name}' not found."
 
-        items = data[category_name].get("items", {})
-        if not items:
-            return f"Category '{category_name}' exists but has no items."
+        description = data[real_category].get("description", "")
+        items = data[real_category].get("items", {})
 
-        return f"Items in '{category_name}': {items}"
+        if not items:
+            return f"Category '{real_category}' (description: '{description}') exists but has no items."
+
+        return (
+            f"Category '{real_category}' (description: '{description}'). "
+            f"Items: {json.dumps(items, ensure_ascii=False, indent=2)}"
+        )
 
     async def add_category(self, fc) -> str:
 
         print(f"[ItemAgent] add_category called with fc: {fc}")
 
-        category_name = fc.args["category_name"]
+        category_name = self._clean(fc.args["category_name"])
         description = fc.args["description"]
+
+        if not category_name:
+            return "Category name cannot be empty."
 
         """
         Add a new category.
-        Returns False (without changes) if the category already exists.
         """
-        data = await self._load()
+        async with self._lock:
+            data = await self._load()
 
-        if category_name in data:
-            print(f"[ItemAgent] Category '{category_name}' already exists.")
-            return f"Category '{category_name}' already exists."
+            if self._find_key_ci(data, category_name) is not None:
+                print(f"[ItemAgent] Category '{category_name}' already exists.")
+                return f"Category '{category_name}' already exists."
 
-        data[category_name] = {
-            "description": description,
-            "items": {}
-        }
-        try:
-            await self._save(data)
-            return f"Category '{category_name}' added successfully."
-        except Exception as e:
-            print(f"[ItemAgent] Error saving data: {e}")
-            return f"Error adding category '{category_name}' with error: {e}"
-        
+            data[category_name] = {
+                "description": description,
+                "items": {}
+            }
+
+            if await self._save(data):
+                return f"Category '{category_name}' added successfully."
+            return f"Error adding category '{category_name}': failed to save data to disk."
 
     async def item_exists(self, fc) -> bool:
 
@@ -102,13 +174,15 @@ class ItemAgent:
         """Return True if the item exists inside the given category."""
         data = await self._load()
 
-        category_name = fc.args["category_name"]
-        item_name = fc.args["item_name"]
+        category_name = self._clean(fc.args["category_name"])
+        item_name = self._clean(fc.args["item_name"])
 
-        if category_name not in data:
+        real_category = self._find_key_ci(data, category_name)
+        if real_category is None:
             return False
 
-        return True if item_name in data[category_name].get("items", {}) else False
+        items = data[real_category].get("items", {})
+        return self._find_key_ci(items, item_name) is not None
 
     async def add_item(self, fc) -> str:
 
@@ -116,46 +190,38 @@ class ItemAgent:
 
         """
         Add a new item to a category.
-        Returns False if the category doesn't exist or the item already exists.
         """
-        data = await self._load()
-
-        category_name = fc.args["category_name"]
-        item_name = fc.args["item_name"]
+        category_name = self._clean(fc.args["category_name"])
+        item_name = self._clean(fc.args["item_name"])
         value = fc.args["value"]
 
-        if category_name not in data:
-            print(f"[ItemAgent] Category '{category_name}' not found.")
-            return f"Category '{category_name}' not found."
+        if not category_name or not item_name:
+            return "Category name and item name cannot be empty."
 
-        items = data[category_name].setdefault("items", {})
+        async with self._lock:
+            data = await self._load()
 
-        if item_name in items:
-            print(f"[ItemAgent] Item '{item_name}' already exists in '{category_name}'.")
-            return f"Item '{item_name}' already exists in '{category_name}'."
+            real_category = self._find_key_ci(data, category_name)
+            if real_category is None:
+                print(f"[ItemAgent] Category '{category_name}' not found.")
+                return f"Category '{category_name}' not found."
 
-        items[item_name] = {"value": value}
-        try:
-            await self._save(data)
-            return f"Item '{item_name}' added to category '{category_name}' successfully."
-        except Exception as e:
-            print(f"[ItemAgent] Error saving data: {e}")
-            return f"Error adding item '{item_name}' to category '{category_name}' with error: {e}"
+            items = data[real_category].setdefault("items", {})
+
+            if self._find_key_ci(items, item_name) is not None:
+                print(f"[ItemAgent] Item '{item_name}' already exists in '{real_category}'.")
+                return f"Item '{item_name}' already exists in '{real_category}'."
+
+            items[item_name] = {"value": value}
+
+            if await self._save(data):
+                return f"Item '{item_name}' added to category '{real_category}' successfully."
+            return f"Error adding item '{item_name}' to category '{real_category}': failed to save data to disk."
 
     async def search_item(self, fc) -> str:
         """
         Search across all categories for items whose name or value
         contains the query string (case-insensitive).
-
-        Returns a list of matches in the form:
-            [
-                {
-                    "category": "emails",
-                    "item_name": "Sam",
-                    "value": "sam@example.com"
-                },
-                ...
-            ]
         """
         print(f"[ItemAgent] search_item called with fc: {fc}")
 
@@ -167,7 +233,7 @@ class ItemAgent:
         for category_name, category_data in data.items():
             items = category_data.get("items", {})
             for item_name, item_data in items.items():
-                value = item_data.get("value", "")
+                value = str(item_data.get("value", ""))
                 if query_lower in item_name.lower() or query_lower in value.lower():
                     results.append({
                         "category": category_name,
@@ -175,35 +241,41 @@ class ItemAgent:
                         "value": value
                     })
 
-        return f"Search results for '{query}': {results}" if results else f"No items found matching '{query}'."
+        if not results:
+            return f"No items found matching '{query}'."
+        return f"Search results for '{query}': {json.dumps(results, ensure_ascii=False, indent=2)}"
 
     async def update_item(self, fc) -> str:
 
         print(f"[ItemAgent] update_item called with fc: {fc}")
 
-        category_name = fc.args["category_name"]
-        item_name = fc.args["item_name"]
+        category_name = self._clean(fc.args["category_name"])
+        item_name = self._clean(fc.args["item_name"])
         new_value = fc.args["new_value"]
 
         """
         Update the value of an existing item.
-        Returns False if the category or item doesn't exist.
         """
-        data = await self._load()
+        async with self._lock:
+            data = await self._load()
 
-        if category_name not in data:
-            print(f"[ItemAgent] Category '{category_name}' not found.")
-            return f"Category '{category_name}' not found."
+            real_category = self._find_key_ci(data, category_name)
+            if real_category is None:
+                print(f"[ItemAgent] Category '{category_name}' not found.")
+                return f"Category '{category_name}' not found."
 
-        items = data[category_name].get("items", {})
+            items = data[real_category].get("items", {})
+            real_item = self._find_key_ci(items, item_name)
 
-        if item_name not in items:
-            print(f"[ItemAgent] Item '{item_name}' not found in '{category_name}'.")
-            return f"Item '{item_name}' not found in '{category_name}'."
+            if real_item is None:
+                print(f"[ItemAgent] Item '{item_name}' not found in '{real_category}'.")
+                return f"Item '{item_name}' not found in '{real_category}'."
 
-        items[item_name]["value"] = new_value
-        await self._save(data)
-        return f"Item '{item_name}' updated in category '{category_name}' successfully."
+            items[real_item]["value"] = new_value
+
+            if await self._save(data):
+                return f"Item '{real_item}' updated in category '{real_category}' successfully."
+            return f"Error updating item '{real_item}' in category '{real_category}': failed to save data to disk."
 
     async def remove_item(self, fc) -> str:
 
@@ -211,27 +283,31 @@ class ItemAgent:
 
         """
         Remove an item from a category.
-        Returns False if the category or item doesn't exist.
         """
-        data = await self._load()
+        category_name = self._clean(fc.args["category_name"])
+        item_name = self._clean(fc.args["item_name"])
 
-        category_name = fc.args["category_name"]
-        item_name = fc.args["item_name"]
+        async with self._lock:
+            data = await self._load()
 
-        if category_name not in data:
-            print(f"[ItemAgent] Category '{category_name}' not found.")
-            return f"Category '{category_name}' not found."
+            real_category = self._find_key_ci(data, category_name)
+            if real_category is None:
+                print(f"[ItemAgent] Category '{category_name}' not found.")
+                return f"Category '{category_name}' not found."
 
-        items = data[category_name].get("items", {})
+            items = data[real_category].get("items", {})
+            real_item = self._find_key_ci(items, item_name)
 
-        if item_name not in items:
-            print(f"[ItemAgent] Item '{item_name}' not found in '{category_name}'.")
-            return f"Item '{item_name}' not found in '{category_name}'."
+            if real_item is None:
+                print(f"[ItemAgent] Item '{item_name}' not found in '{real_category}'.")
+                return f"Item '{item_name}' not found in '{real_category}'."
 
-        del items[item_name]
-        await self._save(data)
-        return f"Item '{item_name}' removed from category '{category_name}' successfully."
-    
+            del items[real_item]
+
+            if await self._save(data):
+                return f"Item '{real_item}' removed from category '{real_category}' successfully."
+            return f"Error removing item '{real_item}' from category '{real_category}': failed to save data to disk."
+
     async def handle_function_call(self, fc):
         """Handle a function call from the agent."""
 
@@ -258,39 +334,46 @@ class ItemAgent:
 
 
 # ─────────────────────────────────────────────────
-# Quick smoke-test  (python item_agent.py)
+# Quick smoke-test  (python item_manager_agent.py)
 # ─────────────────────────────────────────────────
+
+class _FC:
+    """Tiny stand-in for the google-genai function-call object (has .name/.args)."""
+    def __init__(self, name, **args):
+        self.name = name
+        self.args = args
+
 
 async def _demo():
     items_file_path = "backend/items.json"
     agent = ItemAgent(items_file_path)
 
-    # print(await agent.read_categories())
+    print(await agent.read_categories())
 
-    # print("\n── add_category ─────────────────────────────")
-    # print(await agent.add_category("ds", "email adresses"))
+    print("\n── add_category ─────────────────────────────")
+    print(await agent.add_category(_FC("add_category", category_name="test_cat", description="a test category")))
 
-    # print("\n── add_item ─────────────────────────────────")
-    # print(await agent.add_item("test", "sam", "sam@example.com"))
+    print("\n── add_item ─────────────────────────────────")
+    print(await agent.add_item(_FC("add_item", category_name="test_cat", item_name="sam", value="sam@example.com")))
 
-    # print("\n── item_exists ──────────────────────────────")
-    # print(await agent.item_exists("emails", "Sam"))      # True
-    # print(await agent.item_exists("emails", "Ghost"))    # False
+    print("\n── item_exists (different case) ─────────────")
+    print(await agent.item_exists(_FC("item_exists", category_name="Test_Cat", item_name="SAM")))   # True
+    print(await agent.item_exists(_FC("item_exists", category_name="test_cat", item_name="ghost")))  # False
 
-    # print("\n── search_item ('sam') ──────────────────────")
-    # print(await agent.search_item("sam"))
+    print("\n── search_item ('sam') ──────────────────────")
+    print(await agent.search_item(_FC("search_item", query="sam")))
 
-    # print("\n── update_item ──────────────────────────────")
-    # print(await agent.update_item("emails", "sam", "samuel@newdomain.com"))   
+    print("\n── update_item ──────────────────────────────")
+    print(await agent.update_item(_FC("update_item", category_name="test_cat", item_name="SAM", new_value="samuel@newdomain.com")))
 
-    # print("\n── search_item after update ('samuel') ──────")
-    # print(await agent.search_item("samuel"))
+    print("\n── search_item after update ('samuel') ──────")
+    print(await agent.search_item(_FC("search_item", query="samuel")))
 
-    # print("\n── remove_item ──────────────────────────────")
-    # print(await agent.remove_item("phone_numbers", "Dad"))
+    print("\n── remove_item ──────────────────────────────")
+    print(await agent.remove_item(_FC("remove_item", category_name="test_cat", item_name="sam")))
 
-    # print("\n── final categories ─────────────────────────")
-    print(await agent.read_categories(fc=None))
+    print("\n── final categories ─────────────────────────")
+    print(await agent.read_categories())
 
 
 if __name__ == "__main__":
