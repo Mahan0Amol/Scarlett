@@ -5,7 +5,7 @@ from pathlib import Path
 from mutagen.mp3 import MP3
 from mutagen.id3 import ID3
 import base64
-
+import time
 
 class MusicAgent:
 
@@ -34,6 +34,18 @@ class MusicAgent:
         self.current_index = -1
         self._update_task = None
         self.current_metadata = None
+
+        self._last_seek_time = 0
+        self._last_seek_target = 0
+
+        # Track the desired volume ourselves and re-apply it every time we
+        # start playback. On some systems (esp. Windows) VLC's audio output
+        # pipeline isn't actually initialized just by calling play() - it
+        # silently stays muted/not-really-started until audio_set_volume()
+        # is called at least once. That's why playback used to only "kick
+        # in" after the user touched the volume slider in the UI.
+        self.volume = 80
+        self.player.audio_set_volume(self.volume)
 
     def get_metadata(self, song_path: str):
         if not os.path.exists(song_path):
@@ -72,9 +84,14 @@ class MusicAgent:
         position = 0
 
         try:
-            length = self.player.get_length()
-            if length > 0:
-                position = int(self.player.get_time() / 1000)
+            # Cooldown: If we seeked in the last 0.8 seconds, report the target position 
+            # instead of asking VLC (which might still be updating in the background)
+            if time.time() - self._last_seek_time < 0.8:
+                position = self._last_seek_target
+            else:
+                length = self.player.get_length()
+                if length > 0:
+                    position = int(self.player.get_time() / 1000)
         except Exception:
             pass
 
@@ -89,6 +106,22 @@ class MusicAgent:
             "isPlaying": self.player.get_state() == vlc.State.Playing,
             "volume": self.player.audio_get_volume()
         }
+
+    async def _wait_until_ready(self, timeout: float = 3.0):
+        """Poll until VLC has actually started playing (and its length is
+        known), instead of relying on a fixed sleep that can fire before the
+        media has actually started. Without this, the first music_state we
+        emit can report isPlaying=False / duration=0, and the tick loop
+        (which requires get_length() > 0) stays silent until some other
+        event (like a manual seek) nudges VLC into actually starting."""
+        start = time.time()
+        while time.time() - start < timeout:
+            state = self.player.get_state()
+            if state == vlc.State.Playing and self.player.get_length() > 0:
+                return
+            if state in (vlc.State.Error, vlc.State.Ended):
+                return
+            await asyncio.sleep(0.05)
 
     async def search_music(self, fc):
 
@@ -131,7 +164,15 @@ class MusicAgent:
             self.player.set_media(media)
             self.player.play()
 
-            await asyncio.sleep(0.2)
+            # Force the audio pipeline to actually initialize immediately,
+            # instead of waiting for the user to touch the volume slider.
+            self.player.audio_set_volume(self.volume)
+
+            # Wait for VLC to really start (not a blind fixed sleep), so the
+            # first music_state we emit already has the correct
+            # isPlaying/duration and the tick loop can start streaming
+            # position updates right away.
+            await self._wait_until_ready()
 
             if self.sio:
                 await self.sio.emit(
@@ -175,7 +216,12 @@ class MusicAgent:
         while True:
             try:
                 if self.player and self.player.get_length() > 0:
-                    position = self.player.get_time() // 1000
+                    # Cooldown: Prevent tick events from overriding the seek position prematurely
+                    if time.time() - self._last_seek_time < 0.8:
+                        position = self._last_seek_target
+                    else:
+                        position = self.player.get_time() // 1000
+                    
                     duration = self.player.get_length() // 1000
 
                     if self.sio:
@@ -192,7 +238,6 @@ class MusicAgent:
 
             except asyncio.CancelledError:
                 break
-
             except Exception as e:
                 print("[MusicAgent tick error]", e)
                 await asyncio.sleep(1)
@@ -205,6 +250,7 @@ class MusicAgent:
         media = self.instance.media_new_path(self.current_song_path)
         self.player.set_media(media)
         self.player.play()
+        self.player.audio_set_volume(self.volume)
         return self.get_metadata(self.current_song_path)  # Returns dict (sync)
 
     def prev_track(self):
@@ -215,6 +261,7 @@ class MusicAgent:
         media = self.instance.media_new_path(self.current_song_path)
         self.player.set_media(media)
         self.player.play()
+        self.player.audio_set_volume(self.volume)
         return self.get_metadata(self.current_song_path)
 
     def pause(self):
@@ -224,8 +271,10 @@ class MusicAgent:
         self.player.set_pause(0)
 
     def stop(self):
-        if self._update_task:
-            self._update_task.cancel()
+    # Cancel the correct background loop task
+        if hasattr(self, "_tick_task") and self._tick_task:
+            self._tick_task.cancel()
+            self._tick_task = None
 
         self.player.stop()
 
@@ -242,9 +291,12 @@ class MusicAgent:
 
     def seek(self, position_seconds: int):
         if self.player.get_length() > 0:
-            self.player.set_position(
-                position_seconds / (self.player.get_length() / 1000)
-            )
+            # set_time uses milliseconds and is often more precise than set_position
+            self.player.set_time(position_seconds * 1000)
+            
+            # Record the seek event details
+            self._last_seek_time = time.time()
+            self._last_seek_target = position_seconds
 
         if self.sio:
             asyncio.create_task(
@@ -255,7 +307,8 @@ class MusicAgent:
             )
 
     def set_volume(self, volume: int):
-        self.player.audio_set_volume(max(0, min(100, volume)))
+        self.volume = max(0, min(100, volume))
+        self.player.audio_set_volume(self.volume)
 
     async def handle_control_music(self, fc):
         action = fc.args["action"]

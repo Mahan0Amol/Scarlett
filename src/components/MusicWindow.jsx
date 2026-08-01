@@ -98,7 +98,13 @@ const MusicWindow = ({
 
     const commitSeek = (value) => {
         socket.emit("music_seek", { position: value });
-        setIsSeeking(false);
+        
+        // Wait 800ms before accepting backend tick updates.
+        // This gives the backend and VLC player time to settle, 
+        // preventing the slider from snapping back.
+        setTimeout(() => {
+            setIsSeeking(false);
+        }, 800);
     };
 
     const changeVolume = (value) => {
