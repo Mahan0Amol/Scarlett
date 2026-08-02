@@ -101,10 +101,10 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 import Scarlett
 from authenticator import FaceAuthenticator
-from kasa_agent import KasaAgent
-from smart_agent import SmartAgent
-from cmd_agent import CmdAgent
-from music_agent import MusicAgent
+from plugins.smarthome.kasa import KasaAgent
+from plugins.smarthome.smart import SmartAgent
+from plugins.cmd.plugin import CmdAgent
+from plugins.music.plugin import MusicAgent
 
 # Create a Socket.IO server
 sio = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins='*')

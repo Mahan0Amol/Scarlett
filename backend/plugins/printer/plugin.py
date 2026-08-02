@@ -102,7 +102,13 @@ class PrinterAgent:
     Handles 3D printer discovery, profile management, slicing, and print job submission.
     """
     
-    def __init__(self, profiles_dir: str = "printer_profiles"):
+    def __init__(self, profiles_dir: str = None):
+        # Default to the printer_profiles/ folder shipped inside this plugin,
+        # resolved relative to this file (not the process cwd) so the plugin
+        # folder works no matter where it's dropped into a project.
+        if profiles_dir is None:
+            profiles_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "printer_profiles")
+
         self.printers: Dict[str, Printer] = {}  # host -> Printer
         self.profiles_dir = profiles_dir
         self._zeroconf: Optional[Zeroconf] = None

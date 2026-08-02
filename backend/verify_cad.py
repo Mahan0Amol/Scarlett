@@ -5,7 +5,7 @@ import sys
 # Add current directory to path so we can import modules
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from cad_agent import CadAgent
+from plugins.cad.plugin import CadAgent
 
 async def main():
     agent = CadAgent()
