@@ -155,6 +155,8 @@ config = types.LiveConnectConfig(
         "Step 6: Open the movie file.\n"
         "This is the standard — apply the same structured thinking to every non-trivial task.\n\n"
 
+        "- CHESS: You can play chess against Sir. Call 'start_chess_game' to open the board. You play as Black. When it is your turn, use 'play_chess_move' with UCI format (e.g. 'e7e5'). Think silently about the best move before making it."
+
         "RECONNECTION:\n"
         "If connection was lost and restored, briefly acknowledge it ('Lost you for a sec, I'm back.') and resume naturally.\n",
     tools=tools,

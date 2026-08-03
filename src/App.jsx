@@ -17,6 +17,7 @@ import DoorWindow from './components/DoorWindow';
 import PrinterWindow from './components/PrinterWindow';
 import MusicWindow from './components/MusicWindow';
 import SettingsWindow from './components/SettingsWindow';
+import ChessWindow from './components/ChessWindow';
 
 
 
@@ -65,6 +66,7 @@ function App() {
     const [showMusicWindow, setShowMusicWindow] = useState(false);
     const [showCadWindow, setShowCadWindow] = useState(false);
     const [showBrowserWindow, setShowBrowserWindow] = useState(false);
+    const [showChessWindow, setShowChessWindow] = useState(false);
 
     // Printing workflow status (for top toolbar display)
     const [slicingStatus, setSlicingStatus] = useState({ active: false, percent: 0, message: '' });
@@ -103,7 +105,8 @@ function App() {
         printer: { x: window.innerWidth / 2 - 350, y: window.innerHeight / 2 - 100 },
         tools: { x: 0, y: 0 }, // Fixed bottom OFFSET
         cmd: { x: 280, y: window.innerHeight / 2 },
-        music: { x: window.innerWidth / 2 - 300, y: window.innerHeight / 2 - 100 }
+        music: { x: window.innerWidth / 2 - 300, y: window.innerHeight / 2 - 100 },
+        chess: { x: window.innerWidth / 2 + 200, y: window.innerHeight / 2 }
     });
 
     const [elementSizes, setElementSizes] = useState({
@@ -115,13 +118,14 @@ function App() {
         video: { w: 320, h: 180 },
         kasa: { w: 300, h: 380 }, // Approx
         printer: { w: 380, h: 380 }, // Approx
-        cmd: { w: 550, h: 220 }
+        cmd: { w: 550, h: 220 },
+        chess: { w: 400, h: 450 },
     });
     const [activeDragElement, setActiveDragElement] = useState(null);
 
     // Z-Index Stacking Order (last element = highest z-index)
     const [zIndexOrder, setZIndexOrder] = useState([
-        'cmd', 'visualizer', 'chat', 'tools', 'video', 'cad', 'browser', 'kasa','door', 'printer', 'music'
+        'cmd', 'visualizer', 'chat', 'tools', 'video', 'cad', 'browser', 'kasa','door', 'printer', 'music', 'chess'
     ]);
 
     // Hand Control State
@@ -665,6 +669,15 @@ function App() {
             }
         });
 
+        socket.on('open_chess_window', () => {
+            setShowChessWindow(true);
+            if (!elementPositions.chess) {
+                const size = { w: 400, h: 450 };
+                const clamped = clampToViewport({ x: window.innerWidth / 2 + 200, y: window.innerHeight / 2 }, size);
+                setElementPositions(prev => ({ ...prev, chess: clamped }));
+            }
+        });
+
         return () => {
             socket.off('connect');
             socket.off('disconnect');
@@ -681,6 +694,7 @@ function App() {
             socket.off('printer_list');
             socket.off('slicing_progress');
             socket.off('print_status_update');
+            socket.off('open_chess_window');
             socket.off('error');
 
             stopMicVisualizer();
@@ -1712,6 +1726,18 @@ function App() {
                         activeDragElement={activeDragElement}
                         setActiveDragElement={setActiveDragElement}
                         zIndex={getZIndex('music')}
+                    />
+                )}
+
+                {/* Chess Window */}
+                {showChessWindow && (
+                    <ChessWindow
+                        socket={socket}
+                        onClose={() => setShowChessWindow(false)}
+                        position={elementPositions.chess}
+                        onMouseDown={(e) => handleMouseDown(e, 'chess')}
+                        activeDragElement={activeDragElement}
+                        zIndex={getZIndex('chess')}
                     />
                 )}
 
