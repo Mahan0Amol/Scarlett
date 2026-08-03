@@ -113,6 +113,17 @@ sio = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins='*')
 app = FastAPI()
 app_socketio = socketio.ASGIApp(sio, app)
 
+from plugins.base import ui_registry
+
+def wire_ui_events():
+    for event_name, handler_func in ui_registry.all().items():
+        async def wrapped_handler(sid, data=None, _func=handler_func):
+            await _func(sio=sio, sid=sid, data=data or {})
+        
+        sio.on(event_name, wrapped_handler)
+
+wire_ui_events()
+
 import signal
 
 # --- SHUTDOWN HANDLER ---
