@@ -2,6 +2,7 @@ import ipaddress
 import socket
 import sys
 import asyncio
+import chess
 
 # Fix for asyncio subprocess support on Windows
 # MUST BE SET BEFORE OTHER IMPORTS
