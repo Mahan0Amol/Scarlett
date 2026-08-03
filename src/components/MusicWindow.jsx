@@ -43,7 +43,6 @@ const MusicWindow = ({
 
             setIsPlaying(!!data.isPlaying);
             setDuration(data.duration || 0);
-
             setCurrentTime(data.position || 0);
 
             if (!isSeeking) {
@@ -66,14 +65,16 @@ const MusicWindow = ({
         socket.on("music_state", handleMusicState);
         socket.on("music_tick", handleTick);
 
+        // درخواست وضعیت فعلی هنگام باز شدن پنجره
         socket.emit("music_state_request");
 
         return () => {
             socket.off("music_state", handleMusicState);
             socket.off("music_tick", handleTick);
         };
-    }, [socket]);
+    }, [socket, isSeeking]);
 
+    // ====================== کنترل‌های پلیر ======================
     const playPause = () => {
         socket?.emit(isPlaying ? "music_pause" : "music_play");
     };
@@ -88,7 +89,7 @@ const MusicWindow = ({
 
     const stop = () => {
         socket?.emit("music_stop");
-        onClose?.();
+        onClose?.(); // بستن پنجره توسط App.jsx
     };
 
     const seek = (value) => {
@@ -112,25 +113,27 @@ const MusicWindow = ({
         socket?.emit("music_volume", { volume: value });
     };
 
+    // ====================== رندر کامپوننت ======================
     return (
         <div
             id="music"
-            className={`absolute flex flex-col p-4 rounded-xl backdrop-blur-md bg-black/60 border border-purple-500/30 select-none
-            ${activeDragElement === "music" ? "ring-2 ring-purple-500 shadow-[0_0_30px_rgba(168,85,247,0.3)]" : "shadow-[0_0_20px_rgba(0,0,0,0.45)]"
-            }`}
+            className={`absolute flex flex-col p-4 rounded-xl backdrop-blur-md bg-black/60 border border-purple-500/30 select-none transition-all duration-200
+                ${activeDragElement === "music" ? "ring-2 ring-purple-500 shadow-[0_0_30px_rgba(168,85,247,0.3)]" : "shadow-[0_0_20px_rgba(0,0,0,0.45)]"}
+            `}
             style={{
-                left: position.x,
-                top: position.y,
+                left: position?.x || window.innerWidth / 2,
+                top: position?.y || window.innerHeight / 2,
                 width: 320,
                 height: 430,
                 transform: "translate(-50%, -50%)",
-                zIndex
+                pointerEvents: 'auto',
+                zIndex: zIndex
             }}
         >
-            {/* HEADER */}
+            {/* HEADER (Drag Handle) */}
             <div
                 data-drag-handle
-                onMouseDown={onMouseDown}
+                onMouseDown={(e) => onMouseDown && onMouseDown(e, 'music')} // ارسال رویداد درگ به App.jsx
                 className="flex items-center justify-between pb-2 border-b border-white/10 cursor-grab active:cursor-grabbing"
             >
                 <div className="flex items-center gap-2">
@@ -148,7 +151,7 @@ const MusicWindow = ({
                 </button>
             </div>
 
-            {/* COVER */}
+            {/* COVER ART */}
             <div className="mt-4 flex flex-col items-center">
                 <div
                     className={`
@@ -177,7 +180,7 @@ const MusicWindow = ({
                     )}
                 </div>
 
-                {/* INFO */}
+                {/* TRACK INFO */}
                 <div className="mt-3 text-center">
                     <div className="text-white font-semibold text-sm truncate w-[240px]">
                         {track.title}
@@ -205,7 +208,7 @@ const MusicWindow = ({
                 />
             </div>
 
-            {/* CONTROLS */}
+            {/* PLAYBACK CONTROLS */}
             <div className="flex items-center justify-center gap-6 mt-5">
                 <button onClick={prev} className="text-white/60 hover:text-white hover:scale-110 transition-all">
                     <SkipBack size={22} />
@@ -223,7 +226,7 @@ const MusicWindow = ({
                 </button>
             </div>
 
-            {/* VOLUME */}
+            {/* VOLUME CONTROL */}
             <div className="mt-auto pt-5">
                 <div className="flex items-center gap-3">
                     <Volume2 size={16} className="text-white/50" />
