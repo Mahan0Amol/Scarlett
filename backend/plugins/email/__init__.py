@@ -1,4 +1,8 @@
 from plugins.base import tool
+from .plugin import EmailAgent
+
+
+email_service = EmailAgent()
 
 
 @tool(
@@ -19,5 +23,5 @@ async def send_email(ctx, fc):
     subject = fc.args["subject"]
     body = fc.args["body"]
     print(f"[TOOL] send_email to='{recipient}' subject='{subject}'")
-    await ctx.email_agent.send_email(subject, body, recipient)
+    await email_service.send_email(subject, body, recipient)
     return f"Email sent to {recipient}"

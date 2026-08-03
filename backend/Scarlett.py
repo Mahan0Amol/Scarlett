@@ -181,19 +181,9 @@ from plugins.web.plugin import WebAgent
 from plugins.smarthome.kasa import KasaAgent
 from plugins.smarthome.smart import SmartAgent
 from plugins.printer.plugin import PrinterAgent
-from plugins.email.plugin import EmailAgent
 from plugins.cmd.plugin import CmdAgent
 from plugins.items.plugin import ItemAgent
 from plugins.music.plugin import MusicAgent
-
-email_agent = EmailAgent(
-    email_config={
-        "email": "MahanBiabani12@gmail.com",
-        "password": "xuip sxhc faed gapv",
-        "smtp": "smtp.gmail.com",
-        "port": 587
-    }
-)
 
 def get_local_ip():
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -269,7 +259,7 @@ async def discover_light_devices(network: str = None, timeout: float = 2.0) -> l
     return found_devices
 
 class AudioLoop(AudioIOMixin, VideoIOMixin, RequestHandlersMixin):
-    def __init__(self, video_mode=DEFAULT_MODE, on_audio_data=None, on_video_frame=None, on_cad_data=None, on_web_data=None, on_transcription=None, on_tool_confirmation=None, on_cad_status=None, on_cad_thought=None, on_project_update=None, on_device_update=None, on_error=None, input_device_index=None, input_device_name=None, output_device_index=None, kasa_agent=None, email_agent=None,  sio=None, client_sid=None, item_agent=None):
+    def __init__(self, video_mode=DEFAULT_MODE, on_audio_data=None, on_video_frame=None, on_cad_data=None, on_web_data=None, on_transcription=None, on_tool_confirmation=None, on_cad_status=None, on_cad_thought=None, on_project_update=None, on_device_update=None, on_error=None, input_device_index=None, input_device_name=None, output_device_index=None, kasa_agent=None, sio=None, client_sid=None, item_agent=None):
         self.video_mode = video_mode
         self.on_audio_data = on_audio_data
         self.on_video_frame = on_video_frame
@@ -285,7 +275,6 @@ class AudioLoop(AudioIOMixin, VideoIOMixin, RequestHandlersMixin):
         self.input_device_index = input_device_index
         self.input_device_name = input_device_name
         self.output_device_index = output_device_index
-        self.email_agent = email_agent if email_agent else EmailAgent(email_config={"email": "MahanBiabani12@gmail.com", "password": "xuip sxhc faed gapv", "smtp": "smtp.gmail.com", "port": 587})
         self.cmd_agent = CmdAgent()
 
         self.sio = sio
