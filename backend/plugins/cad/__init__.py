@@ -1,5 +1,46 @@
 import asyncio
 from plugins.base import tool
+from .plugin import CadAgent
+
+
+def _get_agent(ctx):
+    """Lazily builds (and caches on ctx.state) this plugin's own CadAgent.
+    Nothing outside this file ever needs to import or construct CadAgent -
+    that's what makes this folder fully self-contained."""
+    if "cad_agent" not in ctx.state:
+        ctx.state["cad_agent"] = CadAgent(
+            on_thought=lambda text: ctx.emit("cad_thought", {"text": text}),
+            on_status=lambda status: ctx.emit("cad_status", status if isinstance(status, dict) else {"status": status}),
+        )
+    return ctx.state["cad_agent"]
+
+
+async def _run_cad_generation(ctx, prompt):
+    """Background task kicked off by the generate_cad tool."""
+    print(f"[scarlett DEBUG] [CAD] Background Task Started: generate('{prompt}')")
+    ctx.emit("cad_status", {"status": "generating"})
+
+    await ctx.ensure_project("CAD")
+
+    cad_output_dir = str(ctx.project_manager.get_current_project_path() / "cad")
+    cad_data = await _get_agent(ctx).generate_prototype(prompt, output_dir=cad_output_dir)
+
+    if cad_data:
+        print(
+            f"[scarlett DEBUG] [CAD] Got data: {len(cad_data.get('vertices', []))} vertices, "
+            f"{len(cad_data.get('edges', []))} edges."
+        )
+        ctx.emit("cad_data", cad_data)
+
+        artifact_name = cad_data.get("file_path", "output.stl")
+        ctx.project_manager.save_cad_artifact(artifact_name, prompt)
+
+        await ctx.notify_model(
+            "CAD generation is complete! The 3D model is now displayed for the user. Let them know it's ready."
+        )
+    else:
+        print("[scarlett DEBUG] [CAD] Generation returned None.")
+        await ctx.notify_model("CAD generation failed.")
 
 
 @tool(
@@ -17,7 +58,7 @@ from plugins.base import tool
 async def generate_cad(ctx, fc):
     prompt = fc.args.get("prompt", "")
     print(f"[TOOL] generate_cad prompt='{prompt}'")
-    asyncio.create_task(ctx.handle_cad_request(prompt))
+    asyncio.create_task(_run_cad_generation(ctx, prompt))
     # No function response needed - the model already acknowledged when the user asked.
     return None
 
@@ -42,15 +83,13 @@ async def iterate_cad(ctx, fc):
     prompt = fc.args["prompt"]
     print(f"[TOOL] iterate_cad prompt='{prompt}'")
 
-    if ctx.on_cad_status:
-        ctx.on_cad_status("generating")
+    ctx.emit("cad_status", {"status": "generating"})
 
     cad_output_dir = str(ctx.project_manager.get_current_project_path() / "cad")
-    cad_data = await ctx.cad_agent.iterate_prototype(prompt, output_dir=cad_output_dir)
+    cad_data = await _get_agent(ctx).iterate_prototype(prompt, output_dir=cad_output_dir)
 
     if cad_data:
-        if ctx.on_cad_data:
-            ctx.on_cad_data(cad_data)
+        ctx.emit("cad_data", cad_data)
         ctx.project_manager.save_cad_artifact("output.stl", f"Iteration: {prompt}")
         return f"Successfully iterated design: {prompt}. The updated 3D model is now displayed."
 

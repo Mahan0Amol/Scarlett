@@ -5,11 +5,18 @@ that just declares the schema and forwards the raw call to it.
 """
 
 from plugins.base import tool
+from .plugin import ItemAgent
+
+
+def _get_agent(ctx):
+    if "item_agent" not in ctx.state:
+        ctx.state["item_agent"] = ItemAgent()
+    return ctx.state["item_agent"]
 
 
 async def _delegate(ctx, fc):
     print(f"[TOOL] ItemAgent call: '{fc.name}' args={fc.args}")
-    return await ctx.item_agent.handle_function_call(fc)
+    return await _get_agent(ctx).handle_function_call(fc)
 
 
 @tool(

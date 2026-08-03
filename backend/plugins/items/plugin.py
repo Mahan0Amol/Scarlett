@@ -7,7 +7,7 @@ from datetime import datetime
 
 
 class ItemAgent:
-    def __init__(self, items_file_path: str = "backend/items.json"):
+    def __init__(self, items_file_path: str = "items.json"):
         # Resolve relative paths against this file's directory, not the
         # process's current working directory, so this works no matter
         # where Scarlett.py is launched from. Absolute paths are left as-is.

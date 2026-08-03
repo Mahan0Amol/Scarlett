@@ -1,6 +1,12 @@
 import asyncio
 from google.genai import types
-from plugins.base import tool
+from plugins.base import tool, lazy_singleton
+from .plugin import CmdAgent
+
+# Process-wide singleton, owned entirely by this plugin. If server.py's own
+# terminal UI endpoints (autocomplete, current-dir display) need the same
+# CmdAgent, they import get_agent from here.
+get_agent = lazy_singleton(lambda: CmdAgent())
 
 
 @tool(
@@ -32,35 +38,24 @@ async def run_cmd(ctx, fc):
     # command finishes, so the dispatcher gets `None` back immediately and
     # doesn't wait on it / doesn't send a second response.
     session_ref = ctx.session
-    sio_ref = ctx.sio
-    sid_ref = ctx.client_sid
     fc_id = fc.id
     fc_name = fc.name
+    agent = get_agent()
 
     async def _run_and_respond():
         result_str = ""
         try:
-            if ctx.cmd_agent:
-                result = await ctx.cmd_agent.execute_command(command)
+            result = await agent.execute_command(command)
 
-                if result.get("clear"):
-                    result_str = "Terminal cleared."
-                    if sio_ref and sid_ref:
-                        await sio_ref.emit("cmd_clear", room=sid_ref)
-                elif "error" in result:
-                    result_str = f"Error: {result['error']}"
-                    if sio_ref and sid_ref:
-                        await sio_ref.emit("cmd_error", {"error": result["error"]}, room=sid_ref)
-                else:
-                    result_str = result.get("output", "(no output)")
-                    if sio_ref and sid_ref:
-                        await sio_ref.emit(
-                            "cmd_output",
-                            {"output": result_str, "current_dir": result.get("current_dir"), "from_ai": True},
-                            room=sid_ref,
-                        )
+            if result.get("clear"):
+                result_str = "Terminal cleared."
+                ctx.emit("cmd_clear")
+            elif "error" in result:
+                result_str = f"Error: {result['error']}"
+                ctx.emit("cmd_error", {"error": result["error"]})
             else:
-                result_str = "cmd_agent is not available."
+                result_str = result.get("output", "(no output)")
+                ctx.emit("cmd_output", {"output": result_str, "current_dir": result.get("current_dir"), "from_ai": True})
         except Exception as e:
             result_str = f"run_cmd failed: {e}"
             print(f"[TOOL] run_cmd error: {e}")

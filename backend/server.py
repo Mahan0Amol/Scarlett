@@ -101,10 +101,10 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 import Scarlett
 from authenticator import FaceAuthenticator
-from plugins.smarthome.kasa import KasaAgent
-from plugins.smarthome.smart import SmartAgent
-from plugins.cmd.plugin import CmdAgent
-from plugins.music.plugin import MusicAgent
+from plugins.smarthome import get_kasa_agent, get_smart_agent
+from plugins.cmd import get_agent as get_cmd_agent
+from plugins.music import get_agent as get_music_agent
+from plugins.printer import get_agent as get_printer_agent
 
 # Create a Socket.IO server
 sio = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins='*')
@@ -134,10 +134,13 @@ signal.signal(signal.SIGTERM, signal_handler)
 audio_loop = None
 loop_task = None
 authenticator = None
-kasa_agent = KasaAgent()
-SmartAgent = SmartAgent()
-cmd_agent = CmdAgent()
-music_agent = MusicAgent(musics_folder="E:/Users/aramis/Music", sio=sio)
+# kasa_agent is built once below, after settings are loaded (it needs
+# known_devices from SETTINGS). smart_agent/cmd_agent/music_agent are
+# each other plugin's one canonical instance - imported above, not
+# constructed here.
+smart_agent = get_smart_agent()
+cmd_agent = get_cmd_agent()
+music_agent = get_music_agent(sio=sio)
 SETTINGS_FILE = "settings.json"
 
 DEFAULT_SETTINGS = {
@@ -189,7 +192,7 @@ def save_settings():
 load_settings()
 
 authenticator = None
-kasa_agent = KasaAgent(known_devices=SETTINGS.get("kasa_devices"))
+kasa_agent = get_kasa_agent(known_devices=SETTINGS.get("kasa_devices"))
 # tool_permissions is now SETTINGS["tool_permissions"]
 
 @app.on_event("startup")
@@ -294,86 +297,14 @@ async def start_audio(sid, data=None):
              return
 
 
-    # Callback to send audio data to frontend
-    def on_audio_data(data_bytes):
-        # We need to schedule this on the event loop
-        # This is high frequency, so we might want to downsample or batch if it's too much
-        asyncio.create_task(sio.emit('audio_data', {'data': list(data_bytes)}))
-
-    # Callback to send CAL data to frontend
-    def on_cad_data(data):
-        info = f"{len(data.get('vertices', []))} vertices" if 'vertices' in data else f"{len(data.get('data', ''))} bytes (STL)"
-        print(f"Sending CAD data to frontend: {info}")
-        asyncio.create_task(sio.emit('cad_data', data))
-
-    # Callback to send Browser data to frontend
-    def on_web_data(data):
-        print(f"Sending Browser data to frontend: {len(data.get('log', ''))} chars logs")
-        asyncio.create_task(sio.emit('browser_frame', data))
-        
-    # Callback to send Transcription data to frontend
-    def on_transcription(data):
-        # data = {"sender": "User"|"Scarlett", "text": "..."}
-        asyncio.create_task(sio.emit('transcription', data))
-
-    # Callback to send Confirmation Request to frontend
-    def on_tool_confirmation(data):
-        # data = {"id": "uuid", "tool": "tool_name", "args": {...}}
-        print(f"Requesting confirmation for tool: {data.get('tool')}")
-        asyncio.create_task(sio.emit('tool_confirmation_request', data))
-
-    # Callback to send CAD status to frontend
-    def on_cad_status(status):
-        # status can be: 
-        # - a string like "generating" (from Scarlett.py handle_cad_request)
-        # - a dict with {status, attempt, max_attempts, error} (from CScarlettgent)
-        if isinstance(status, dict):
-            print(f"Sending CAD Status: {status.get('status')} (attempt {status.get('attempt')}/{status.get('max_attempts')})")
-            asyncio.create_task(sio.emit('cad_status', status))
-        else:
-            # Legacy: simple string
-            print(f"Sending CAD Status: {status}")
-            asyncio.create_task(sio.emit('cad_status', {'status': status}))
-
-    # Callback to send CAD thoughts to frontend (streaming)
-    def on_cad_thought(thought_text):
-        asyncio.create_task(sio.emit('cad_thought', {'text': thought_text}))
-
-    # Callback to send Project Update to frontend
-    def on_project_update(project_name):
-        print(f"Sending Project Update: {project_name}")
-        asyncio.create_task(sio.emit('project_update', {'project': project_name}))
-
-    # Callback to send Device Update to frontend
-    def on_device_update(devices):
-        # devices is a list of dicts
-        print(f"Sending Kasa Device Update: {len(devices)} devices")
-        asyncio.create_task(sio.emit('kasa_devices', devices))
-
-    # Callback to send Error to frontend
-    def on_error(msg):
-        print(f"Sending Error to frontend: {msg}")
-        asyncio.create_task(sio.emit('error', {'msg': msg}))
-
     # Initialize Scarlett
     try:
         print(f"Initializing AudioLoop with device_index={device_index}")
         audio_loop = Scarlett.AudioLoop(
-            video_mode="none", 
-            on_audio_data=on_audio_data,
-            on_cad_data=on_cad_data,
-            on_web_data=on_web_data,
-            on_transcription=on_transcription,
-            on_tool_confirmation=on_tool_confirmation,
-            on_cad_status=on_cad_status,
-            on_cad_thought=on_cad_thought,
-            on_project_update=on_project_update,
-            on_device_update=on_device_update,
-            on_error=on_error,
+            video_mode="none",
 
             input_device_index=device_index,
             input_device_name=device_name,
-            kasa_agent=kasa_agent,
 
             sio=sio,
             client_sid=sid
@@ -408,10 +339,10 @@ async def start_audio(sid, data=None):
 
         # Load saved printers
         saved_printers = SETTINGS.get("printers", [])
-        if saved_printers and audio_loop.printer_agent:
+        if saved_printers:
             print(f"[SERVER] Loading {len(saved_printers)} saved printers...")
             for p in saved_printers:
-                audio_loop.printer_agent.add_printer_manually(
+                get_printer_agent().add_printer_manually(
                     name=p.get("name", p["host"]),
                     host=p["host"],
                     port=p.get("port", 80),
@@ -433,9 +364,9 @@ async def start_audio(sid, data=None):
 async def monitor_printers_loop():
     """Background task to query printer status periodically."""
     print("[SERVER] Starting Printer Monitor Loop")
-    while audio_loop and audio_loop.printer_agent:
+    while audio_loop:
         try:
-            agent = audio_loop.printer_agent
+            agent = get_printer_agent()
             if not agent.printers:
                 await asyncio.sleep(5)
                 continue
@@ -652,8 +583,8 @@ async def upload_memory(sid, data):
 async def discover_kasa(sid):
     print(f"Received discover_kasa request")
     try:
-        devices = await SmartAgent.discover_devices()
-        devices = SmartAgent.get_device_by_type(devices=devices, target_type="light")
+        devices = await smart_agent.discover_devices()
+        devices = smart_agent.get_device_by_type(devices=devices, target_type="light")
         await sio.emit('kasa_devices', devices)
         await sio.emit('status', {'msg': f"Found {len(devices)} light devices"})
 
@@ -678,8 +609,8 @@ async def discover_kasa(sid):
 async def discover_door(sid):
     print(f"Received discover_door request")
     try:
-        devices = await SmartAgent.discover_devices()
-        devices = SmartAgent.get_device_by_type(devices=devices, target_type="door")
+        devices = await smart_agent.discover_devices()
+        devices = smart_agent.get_device_by_type(devices=devices, target_type="door")
         await sio.emit('door_devices', devices)
         await sio.emit('status', {'msg': f"Found {len(devices)} door devices"})
 
@@ -812,7 +743,7 @@ async def discover_printers(sid):
     print("Received discover_printers request")
     
     # If audio_loop isn't ready yet, return saved printers from settings
-    if not audio_loop or not audio_loop.printer_agent:
+    if not audio_loop:
         saved_printers = SETTINGS.get("printers", [])
         if saved_printers:
             # Convert saved printers to the expected format
@@ -834,7 +765,7 @@ async def discover_printers(sid):
             return
         
     try:
-        printers = await audio_loop.printer_agent.discover_printers()
+        printers = await get_printer_agent().discover_printers()
         await sio.emit('printer_list', printers)
         await sio.emit('status', {'msg': f"Found {len(printers)} printers"})
     except Exception as e:
@@ -858,14 +789,14 @@ async def add_printer(sid, data):
     
     print(f"Received add_printer request: {host}:{port} ({ptype})")
     
-    if not audio_loop or not audio_loop.printer_agent:
+    if not audio_loop:
         await sio.emit('error', {'msg': "Printer Agent not available"})
         return
         
     try:
         # Add manually
         camera_url = data.get('camera_url')
-        printer = audio_loop.printer_agent.add_printer_manually(name, host, port=port, printer_type=ptype, camera_url=camera_url)
+        printer = get_printer_agent().add_printer_manually(name, host, port=port, printer_type=ptype, camera_url=camera_url)
         
         # Save to settings
         new_printer_config = {
@@ -897,7 +828,7 @@ async def add_printer(sid, data):
         
         actual_type = "unknown"
         for port in ports_to_try:
-             found_type = await audio_loop.printer_agent._probe_printer_type(host, port)
+             found_type = await get_printer_agent()._probe_printer_type(host, port)
              if found_type.value != "unknown":
                  actual_type = found_type
                  # Update port if different
@@ -910,7 +841,7 @@ async def add_printer(sid, data):
              print(f"Corrected type to {actual_type.value} on port {printer.port}")
              
         # Refresh list for everyone
-        printers = [p.to_dict() for p in audio_loop.printer_agent.printers.values()]
+        printers = [p.to_dict() for p in get_printer_agent().printers.values()]
         await sio.emit('printer_list', printers)
         await sio.emit('status', {'msg': f"Added printer: {name}"})
         
@@ -923,7 +854,7 @@ async def print_stl(sid, data):
     print(f"Received print_stl request: {data}")
     # data: { stl_path: "path/to.stl" | "current", printer: "name_or_ip", profile: "optional" }
     
-    if not audio_loop or not audio_loop.printer_agent:
+    if not audio_loop:
         await sio.emit('error', {'msg': "Printer Agent not available"})
         return
         
@@ -945,7 +876,7 @@ async def print_stl(sid, data):
             print(f"[SERVER DEBUG] Using project path: {current_project_path}")
 
         # Resolve STL path before slicing so we can preview it
-        resolved_stl = audio_loop.printer_agent._resolve_file_path(stl_path, current_project_path)
+        resolved_stl = get_printer_agent()._resolve_file_path(stl_path, current_project_path)
         
         if resolved_stl and os.path.exists(resolved_stl):
             # Open the STL in the CAD module for preview
@@ -975,7 +906,7 @@ async def print_stl(sid, data):
             if percent < 100:
                  await sio.emit('status', {'msg': f"Slicing: {percent}%"})
 
-        result = await audio_loop.printer_agent.print_stl(
+        result = await get_printer_agent().print_stl(
             stl_path, 
             printer_name, 
             profile,
@@ -994,12 +925,12 @@ async def print_stl(sid, data):
 async def get_slicer_profiles(sid):
     """Get available OrcaSlicer profiles for manual selection."""
     print("Received get_slicer_profiles request")
-    if not audio_loop or not audio_loop.printer_agent:
+    if not audio_loop:
         await sio.emit('error', {'msg': "Printer Agent not available"})
         return
     
     try:
-        profiles = audio_loop.printer_agent.get_available_profiles()
+        profiles = get_printer_agent().get_available_profiles()
         await sio.emit('slicer_profiles', profiles)
     except Exception as e:
         print(f"Error getting slicer profiles: {e}")

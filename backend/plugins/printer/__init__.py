@@ -1,5 +1,11 @@
-from plugins.base import tool
+from plugins.base import tool, lazy_singleton
+from .plugin import PrinterAgent
 
+get_agent = lazy_singleton(lambda: PrinterAgent())
+
+
+def _get_agent(ctx):
+    return get_agent()
 
 @tool(
     name="discover_printers",
@@ -7,7 +13,7 @@ from plugins.base import tool
     parameters={"type": "OBJECT", "properties": {}},
 )
 async def discover_printers(ctx, fc):
-    printers = await ctx.printer_agent.discover_printers()
+    printers = await _get_agent(ctx).discover_printers()
     if printers:
         printer_list = [f"{p['name']} ({p['host']}:{p['port']}, type: {p['printer_type']})" for p in printers]
         return "Found Printers:\n" + "\n".join(printer_list)
@@ -36,7 +42,7 @@ async def print_stl(ctx, fc):
         stl_path = "output.stl"
 
     project_path = str(ctx.project_manager.get_current_project_path())
-    result = await ctx.printer_agent.print_stl(stl_path, printer, profile, root_path=project_path)
+    result = await _get_agent(ctx).print_stl(stl_path, printer, profile, root_path=project_path)
     return result.get("message", "Unknown result")
 
 
@@ -51,7 +57,7 @@ async def print_stl(ctx, fc):
 )
 async def get_print_status(ctx, fc):
     printer = fc.args["printer"]
-    status = await ctx.printer_agent.get_print_status(printer)
+    status = await _get_agent(ctx).get_print_status(printer)
 
     if not status:
         return f"Could not get status for printer '{printer}'. Ensure it is discovered first."

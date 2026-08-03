@@ -157,6 +157,5 @@ class AudioIOMixin:
         )
         while True:
             bytestream = await self.audio_in_queue.get()
-            if self.on_audio_data:
-                self.on_audio_data(bytestream)
+            self.emit("audio_data", {"data": list(bytestream)})
             await asyncio.to_thread(stream.write, bytestream)

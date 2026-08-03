@@ -17,8 +17,7 @@ async def create_project(ctx, fc):
     if success:
         ctx.project_manager.switch_project(name)
         msg += f" Switched to '{name}'."
-        if ctx.on_project_update:
-            ctx.on_project_update(name)
+        ctx.emit("project_update", {"project": name})
     return msg
 
 
@@ -36,13 +35,9 @@ async def switch_project(ctx, fc):
     print(f"[TOOL] switch_project name='{name}'")
     success, msg = ctx.project_manager.switch_project(name)
     if success:
-        if ctx.on_project_update:
-            ctx.on_project_update(name)
+        ctx.emit("project_update", {"project": name})
         context = ctx.project_manager.get_project_context()
-        try:
-            await ctx.session.send(input=f"System Notification: {msg}\n\n{context}", end_of_turn=False)
-        except Exception as e:
-            print(f"[TOOL] Failed to send project context: {e}")
+        await ctx.notify_model(f"{msg}\n\n{context}", end_of_turn=False)
     return msg
 
 

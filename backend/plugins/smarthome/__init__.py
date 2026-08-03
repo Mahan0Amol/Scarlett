@@ -1,5 +1,13 @@
 import requests
-from plugins.base import tool
+from plugins.base import tool, lazy_singleton
+from .kasa import KasaAgent
+from .smart import SmartAgent
+
+# Process-wide singletons, owned entirely by this plugin. If server.py's own
+# routes (e.g. device-management endpoints) need the same KasaAgent, they
+# import get_kasa_agent from here - nothing has to be wired into AudioLoop.
+get_kasa_agent = lazy_singleton(lambda known_devices=None: KasaAgent(known_devices=known_devices))
+get_smart_agent = lazy_singleton(lambda: SmartAgent())
 
 
 @tool(
@@ -8,13 +16,12 @@ from plugins.base import tool
     parameters={"type": "OBJECT", "properties": {}},
 )
 async def list_smart_devices(ctx, fc):
-    frontend_list = await ctx.smart_agent.discover_devices()
+    frontend_list = await get_smart_agent().discover_devices()
 
     dev_summaries = [f"{d['alias']} (IP: {d['ip']}, Type: {d['type']})" for d in frontend_list]
     result_str = "No devices found." if not dev_summaries else "Found Devices:\n" + "\n".join(dev_summaries)
 
-    if ctx.on_device_update:
-        ctx.on_device_update(frontend_list)
+    ctx.emit("kasa_devices", frontend_list)
 
     return result_str
 
@@ -99,10 +106,10 @@ async def control_light(ctx, fc):
 
     if success or action == "set":
         if brightness is not None:
-            if await ctx.kasa_agent.set_brightness(target, brightness):
+            if await get_kasa_agent().set_brightness(target, brightness):
                 result_msg += f" Set brightness to {brightness}."
         if color is not None:
-            if await ctx.kasa_agent.set_color(target, color):
+            if await get_kasa_agent().set_color(target, color):
                 result_msg += f" Set color to {color}."
 
     return result_msg

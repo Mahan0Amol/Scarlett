@@ -62,9 +62,9 @@ class ToolDispatcher:
         return types.FunctionResponse(id=fc.id, name=fc.name, response={"result": result})
 
     async def _request_confirmation(self, tool_name, args) -> bool:
-        if not self.ctx.on_tool_confirmation:
-            # No confirmation UI wired up — behave like the original code did
-            # when on_tool_confirmation was unset (proceed without asking).
+        if not self.ctx.sio:
+            # No frontend connected to ask - behave like the original code
+            # did when no confirmation UI was wired up (proceed without asking).
             return True
 
         request_id = str(uuid.uuid4())
@@ -72,7 +72,7 @@ class ToolDispatcher:
         self.ctx._pending_confirmations[request_id] = future
 
         print(f"[TOOL] Requesting confirmation for '{tool_name}' (ID: {request_id})")
-        self.ctx.on_tool_confirmation({"id": request_id, "tool": tool_name, "args": args})
+        self.ctx.emit("tool_confirmation_request", {"id": request_id, "tool": tool_name, "args": args})
 
         try:
             confirmed = await future

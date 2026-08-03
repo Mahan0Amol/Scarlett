@@ -1,17 +1,11 @@
 import asyncio
-import os
 import smtplib
 from email.message import EmailMessage
 
 
 class EmailAgent:
     def __init__(self, email_config=None):
-        self.email_config = {
-            "email": os.getenv("EMAIL_ADDRESS"),
-            "password": os.getenv("EMAIL_PASSWORD"),
-            "smtp": "smtp.gmail.com",
-            "port": 587
-        }
+        self.email_config = email_config or {}
 
     async def send_email(self, subject, body, to_email):
         sender = self.email_config.get("email")

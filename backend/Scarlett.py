@@ -10,15 +10,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from dotenv import load_dotenv
 import pyaudio
 import argparse
-import ipaddress
-import socket
-import aiohttp
-import pyautogui
-
 
 from google import genai
 from google.genai import types
-import requests
 
 if sys.version_info < (3, 11, 0):
     import taskgroup, exceptiongroup
@@ -27,7 +21,6 @@ if sys.version_info < (3, 11, 0):
 
 from core.audio_io import AudioIOMixin
 from core.video_io import VideoIOMixin
-from core.request_handlers import RequestHandlersMixin
 
 MODEL = "models/gemini-2.5-flash-native-audio-preview-12-2025"
 DEFAULT_MODE = "camera"
@@ -174,155 +167,45 @@ config = types.LiveConnectConfig(
     )
 )
 
-
-
-from plugins.cad.plugin import CadAgent
-from plugins.web.plugin import WebAgent
-from plugins.smarthome.kasa import KasaAgent
-from plugins.smarthome.smart import SmartAgent
-from plugins.printer.plugin import PrinterAgent
-from plugins.cmd.plugin import CmdAgent
-from plugins.items.plugin import ItemAgent
-from plugins.music.plugin import MusicAgent
-
-def get_local_ip():
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    try:
-        # no packets are actually sent
-        s.connect(("8.8.8.8", 80))
-        return s.getsockname()[0]
-    finally:
-        s.close()
-
-# ---- guess subnet mask (fallback to /24 if unknown) ----
-def get_network(local_ip):
-    return ipaddress.IPv4Network(local_ip + "/24", strict=False)
-
-# ---- rewritten discover function ----
-async def discover_light_devices(network: str = None, timeout: float = 2.0) -> list:
-    """
-    Scans the local network for custom light devices.
-    Returns a list of dicts: [{"ip": ..., "alias": ..., ...}]
-    """
-
-    if network is None:
-        local_ip = get_local_ip()
-        hostname = socket.gethostname()
-        network = get_network(local_ip)
-
-        print(f"[scarlett DEBUG] [DISCOVER] Hostname: {hostname}")
-        print(f"[scarlett DEBUG] [DISCOVER] Local IP: {local_ip}")
-    else:
-        network = ipaddress.IPv4Network(network, strict=False)
-
-    print(f"[scarlett DEBUG] [DISCOVER] Scanning network: {network}")
-
-    all_ips = [str(ip) for ip in network.hosts()]
-    found_devices = []
-
-    timeout_cfg = aiohttp.ClientTimeout(total=timeout)
-    connector = aiohttp.TCPConnector(limit=50)
-    sem = asyncio.Semaphore(50)
-
-    async def check_ip(session: aiohttp.ClientSession, ip: str):
-        url = f"http://{ip}/command"
-        try:
-            async with sem:
-                async with session.post(url, data="check") as resp:
-                    if resp.status == 200:
-                        text = (await resp.text())
-                        if "This is a light" in text:
-                            print(f"[scarlett DEBUG] [DISCOVER] Found light at {ip}")
-                            found_devices.append({
-                                "ip": ip,
-                                "alias": f"Ligh",
-                                "model": "custom",
-                                "type": "bulb",
-                                "is_on": False,
-                                "brightness": None,
-                                "hsv": None,
-                                "has_color": False,
-                                "has_brightness": False
-                            })
-        except asyncio.TimeoutError:
-            pass
-        except aiohttp.ClientError:
-            pass
-        except Exception as e:
-            print(f"[scarlett ERROR] [DISCOVER] {ip} -> {e}")
-
-    async with aiohttp.ClientSession(timeout=timeout_cfg, connector=connector) as session:
-        tasks = [check_ip(session, ip) for ip in all_ips]
-        await asyncio.gather(*tasks)
-
-    print(f"[scarlett DEBUG] [DISCOVER] Found {len(found_devices)} light(s).")
-    return found_devices
-
-class AudioLoop(AudioIOMixin, VideoIOMixin, RequestHandlersMixin):
-    def __init__(self, video_mode=DEFAULT_MODE, on_audio_data=None, on_video_frame=None, on_cad_data=None, on_web_data=None, on_transcription=None, on_tool_confirmation=None, on_cad_status=None, on_cad_thought=None, on_project_update=None, on_device_update=None, on_error=None, input_device_index=None, input_device_name=None, output_device_index=None, kasa_agent=None, sio=None, client_sid=None, item_agent=None):
+class AudioLoop(AudioIOMixin, VideoIOMixin):
+    def __init__(self, video_mode=DEFAULT_MODE,
+                 input_device_index=None, input_device_name=None, output_device_index=None,
+                 sio=None, client_sid=None):
         self.video_mode = video_mode
-        self.on_audio_data = on_audio_data
-        self.on_video_frame = on_video_frame
-        self.on_cad_data = on_cad_data
-        self.on_web_data = on_web_data
-        self.on_transcription = on_transcription
-        self.on_tool_confirmation = on_tool_confirmation 
-        self.on_cad_status = on_cad_status
-        self.on_cad_thought = on_cad_thought
-        self.on_project_update = on_project_update
-        self.on_device_update = on_device_update
-        self.on_error = on_error
         self.input_device_index = input_device_index
         self.input_device_name = input_device_name
         self.output_device_index = output_device_index
-        self.cmd_agent = CmdAgent()
 
         self.sio = sio
         self.client_sid = client_sid
+
+        # Generic bucket for plugin-owned, per-session state (rarely needed -
+        # most plugins that need a shared instance across the whole app use
+        # a module-level lazy_singleton in their own __init__.py instead, so
+        # that even server.py's own routes can reach the same instance
+        # without anything being wired in here). See plugins/base.py.
+        self.state = {}
 
         self.audio_in_queue = None
         self.out_queue = None
         self.paused = False
 
         self.chat_buffer = {"sender": None, "text": ""} # For aggregating chunks
-        
+
         # Track last transcription text to calculate deltas (Gemini sends cumulative text)
         self._last_input_transcription = ""
         self._last_output_transcription = ""
 
-        self.audio_in_queue = None
-        self.out_queue = None
-        self.paused = False
-
         self.session = None
-        
-        # Create CadAgent with thought callback
-        def handle_cad_thought(thought_text):
-            if self.on_cad_thought:
-                self.on_cad_thought(thought_text)
-        
-        def handle_cad_status(status_info):
-            if self.on_cad_status:
-                self.on_cad_status(status_info)
-        
-        self.cad_agent = CadAgent(on_thought=handle_cad_thought, on_status=handle_cad_status)
-        self.web_agent = WebAgent()
-        self.kasa_agent = kasa_agent if kasa_agent else KasaAgent()
-        self.smart_agent = SmartAgent()
-        self.printer_agent = PrinterAgent()
-        self.item_agent = ItemAgent()
-        self.music_agent = MusicAgent("E:/Users/aramis/Music", self.sio)
 
         self.send_text_task = None
         self.stop_event = asyncio.Event()
-        
-        self.stop_event = asyncio.Event()
-        
+
         self.permissions = {} # Default Empty (Will treat unset as True)
         self._pending_confirmations = {}
 
         # Plugin-based tool dispatcher: routes every tool call from Gemini to
-        # its plugin handler in backend/plugins/. See tool_dispatcher.py.
+        # its plugin handler in backend/plugins/. See core/tool_dispatcher.py.
         self.tool_dispatcher = ToolDispatcher(self)
 
         # Video buffering state
@@ -330,22 +213,55 @@ class AudioLoop(AudioIOMixin, VideoIOMixin, RequestHandlersMixin):
         # VAD State
         self._is_speaking = False
         self._silence_start_time = None
-        
-        # Initialize ProjectManager
+
+        # ProjectManager is core/shared state (which project is active) that
+        # almost every plugin touches, so - unlike the domain agents - it
+        # lives here rather than being plugin-owned.
         from plugins.project.plugin import ProjectManager
-        # Assuming we are running from backend/ or root? 
-        # Using abspath of current file to find root
         current_dir = os.path.dirname(os.path.abspath(__file__))
-        # If scarlett.py is in backend/, project root is one up
         project_root = os.path.dirname(current_dir)
         self.project_manager = ProjectManager(project_root)
-        
-        # Sync Initial Project State
-        if self.on_project_update:
-            # We need to defer this slightly or just call it. 
-            # Since this is init, loop might not be running, but on_project_update in server.py uses asyncio.create_task which needs a loop.
-            # We will handle this by calling it in run() or just print for now.
-            pass
+
+    def emit(self, event, data=None):
+        """Fire-and-forget socket.io event to the connected frontend.
+
+        This is the generic mechanism plugins/agents use to reach the UI,
+        replacing the old pile of per-feature callbacks (on_cad_status,
+        on_device_update, on_cad_data, ...) that used to be threaded through
+        this constructor by hand for every new feature.
+        """
+        if not self.sio:
+            return
+        payload = {} if data is None else data
+        coro = self.sio.emit(event, payload, room=self.client_sid) if self.client_sid else self.sio.emit(event, payload)
+        asyncio.create_task(coro)
+
+    async def notify_model(self, text, end_of_turn=True):
+        """Tell the running Gemini session something happened (e.g. a
+        background task finished). Generic replacement for plugins calling
+        `self.session.send(...)` directly."""
+        if not self.session:
+            return
+        try:
+            await self.session.send(input=f"System Notification: {text}", end_of_turn=end_of_turn)
+        except Exception as e:
+            print(f"[ctx] Failed to notify model: {e}")
+
+    async def ensure_project(self, tag="plugin"):
+        """If we're still in the scratch 'temp' project, auto-create and
+        switch to a timestamped one. Any plugin that writes project
+        artifacts (CAD output, files, ...) can call this first."""
+        if self.project_manager.current_project != "temp":
+            return
+        import datetime
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        new_project_name = f"Project_{timestamp}"
+        print(f"[scarlett DEBUG] [{tag}] Auto-creating project: {new_project_name}")
+        success, _ = self.project_manager.create_project(new_project_name)
+        if success:
+            self.project_manager.switch_project(new_project_name)
+            await self.notify_model(f"Automatic Project Creation. Switched to new project '{new_project_name}'.")
+            self.emit("project_update", {"project": new_project_name})
 
     def flush_chat(self):
         """Forces the current chat buffer to be written to log."""
@@ -408,8 +324,7 @@ class AudioLoop(AudioIOMixin, VideoIOMixin, RequestHandlersMixin):
                                         self.clear_audio_queue()
 
                                         # Send to frontend (Streaming)
-                                        if self.on_transcription:
-                                             self.on_transcription({"sender": "User", "text": delta})
+                                        self.emit("transcription", {"sender": "User", "text": delta})
                                         
                                         # Buffer for Logging
                                         if self.chat_buffer["sender"] != "User":
@@ -436,8 +351,7 @@ class AudioLoop(AudioIOMixin, VideoIOMixin, RequestHandlersMixin):
                                     # Only send if there's new text
                                     if delta:
                                         # Send to frontend (Streaming)
-                                        if self.on_transcription:
-                                             self.on_transcription({"sender": "scarlett", "text": delta})
+                                        self.emit("transcription", {"sender": "scarlett", "text": delta})
                                         
                                         # Buffer for Logging
                                         if self.chat_buffer["sender"] != "scarlett":
@@ -514,8 +428,8 @@ class AudioLoop(AudioIOMixin, VideoIOMixin, RequestHandlersMixin):
                             await self.session.send(input=start_message, end_of_turn=True)
                         
                         # Sync Project State
-                        if self.on_project_update and self.project_manager:
-                            self.on_project_update(self.project_manager.current_project)
+                        if self.project_manager:
+                            self.emit("project_update", {"project": self.project_manager.current_project})
                     
                     else:
                         print(f"[scarlett DEBUG] [RECONNECT] Connection restored.")

@@ -91,3 +91,33 @@ registry = ToolRegistry()
 
 # Convenience alias so plugin files can just do: from plugins.base import tool
 tool = registry.register
+
+
+def lazy_singleton(builder):
+    """Wraps a builder function into a cached accessor - the plugin's one
+    canonical, process-wide instance (e.g. its agent). Any code anywhere -
+    a tool handler in this plugin, or server.py's own routes if they need
+    the same instance for a non-AI UI feature - just imports and calls the
+    returned accessor. Nothing needs to be wired in from outside; the
+    plugin folder is the single source of truth for its own resources.
+
+    Example (inside a plugin's __init__.py):
+        get_agent = lazy_singleton(lambda: SomeAgent())
+
+        @tool(...)
+        async def some_tool(ctx, fc):
+            return await get_agent().do_thing()
+
+    And, only if some *other* part of the app also needs that same agent:
+        from plugins.some_plugin import get_agent
+        agent = get_agent()
+    """
+    _cache = {}
+
+    def get(*args, **kwargs):
+        if "instance" not in _cache:
+            _cache["instance"] = builder(*args, **kwargs)
+        return _cache["instance"]
+
+    return get
+

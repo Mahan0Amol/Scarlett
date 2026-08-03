@@ -1,4 +1,15 @@
-from plugins.base import tool
+import os
+from pathlib import Path
+from plugins.base import tool, lazy_singleton
+from .plugin import MusicAgent
+
+# Process-wide singleton, owned entirely by this plugin. Folder comes from
+# MUSIC_FOLDER in .env, falling back to ~/Music. If server.py's own routes
+# (transport-control buttons in the UI) need the same MusicAgent, they
+# import get_agent from here - nothing has to be wired into AudioLoop.
+get_agent = lazy_singleton(
+    lambda sio=None: MusicAgent(os.getenv("MUSIC_FOLDER") or str(Path.home() / "Music"), sio)
+)
 
 
 @tool(
@@ -14,7 +25,7 @@ from plugins.base import tool
 )
 async def search_music(ctx, fc):
     print(f"[TOOL] MusicAgent call: '{fc.name}' args={fc.args}")
-    return await ctx.music_agent.handle_function_call(fc)
+    return await get_agent(sio=ctx.sio).handle_function_call(fc)
 
 
 @tool(
@@ -33,9 +44,8 @@ async def search_music(ctx, fc):
 )
 async def play_music(ctx, fc):
     print(f"[TOOL] MusicAgent call: '{fc.name}' args={fc.args}")
-    if ctx.sio and ctx.client_sid:
-        await ctx.sio.emit("open_music_window", room=ctx.client_sid)
-    return await ctx.music_agent.handle_function_call(fc)
+    ctx.emit("open_music_window")
+    return await get_agent(sio=ctx.sio).handle_function_call(fc)
 
 
 @tool(
@@ -51,4 +61,4 @@ async def play_music(ctx, fc):
 )
 async def control_music(ctx, fc):
     print(f"[TOOL] MusicAgent call: '{fc.name}' args={fc.args}")
-    return await ctx.music_agent.handle_function_call(fc)
+    return await get_agent(sio=ctx.sio).handle_function_call(fc)
