@@ -93,6 +93,27 @@ registry = ToolRegistry()
 tool = registry.register
 
 
+
+class UIActionRegistry:
+    def __init__(self):
+        self._actions = {}
+
+    def register(self, event_name: str):
+        def decorator(func):
+            if event_name in self._actions:
+                raise ValueError(f"UI Action '{event_name}' is already registered.")
+            self._actions[event_name] = func
+            return func
+        return decorator
+
+    def all(self):
+        return self._actions
+
+# ساخت یک نمونه عمومی و alias برای استفاده آسان در پلاگین‌ها
+ui_registry = UIActionRegistry()
+ui_action = ui_registry.register
+
+
 def lazy_singleton(builder):
     """Wraps a builder function into a cached accessor - the plugin's one
     canonical, process-wide instance (e.g. its agent). Any code anywhere -
