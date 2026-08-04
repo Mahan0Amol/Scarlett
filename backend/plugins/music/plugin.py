@@ -26,7 +26,7 @@ class MusicAgent:
         self._initialized = True
 
         self.instance = vlc.Instance()
-        self.musics_folder = musics_folder
+        self.musics_folder = os.getenv("MUSIC_FOLDER_PATH") or musics_folder
         self.sio = sio  # Socket.IO instance for emitting updates
         self.player = self.instance.media_player_new()
         self.current_song_path = None
