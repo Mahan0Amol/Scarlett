@@ -6,21 +6,25 @@ const DoorWindow = ({
     position,
     onClose,
     activeDragElement,
-    setActiveDragElement,
-    devices,
     onMouseDown,
-    zIndex = 40
+    zIndex = 40,
+    data = {}
 }) => {
+    // Extract plugin-specific data from the data prop
+    const devices = data.devices || [];
+    
     const [isThinking, setIsThinking] = useState(false);
     const [loadingDevices, setLoadingDevices] = useState({}); // { ip: true/false }
 
     useEffect(() => {
+        if (!socket) return;
+        
         // Listen for individual updates to clear loading state
-        const onUpdate = (data) => {
-            if (data && data.ip) {
+        const onUpdate = (updateData) => {
+            if (updateData && updateData.ip) {
                 setLoadingDevices(prev => {
                     const next = { ...prev };
-                    delete next[data.ip];
+                    delete next[updateData.ip];
                     return next;
                 });
             }
@@ -30,19 +34,18 @@ const DoorWindow = ({
         return () => socket.off('door_update', onUpdate);
     }, [socket]);
 
-
-    const handleDiscover = () => {
-        setIsThinking(true);
-        socket.emit('discover_door');
-        // Reset thinking after 5s if no response (safety)
-        setTimeout(() => setIsThinking(false), 10000);
-    };
-
     useEffect(() => {
         if (devices && devices.length > 0) {
             setIsThinking(false);
         }
     }, [devices]);
+
+    const handleDiscover = () => {
+        setIsThinking(true);
+        socket.emit('discover_door');
+        // Reset thinking after 10s if no response (safety)
+        setTimeout(() => setIsThinking(false), 10000);
+    };
 
     const handleToggle = (ip, currentState) => {
         setLoadingDevices(prev => ({ ...prev, [ip]: true }));
@@ -52,41 +55,51 @@ const DoorWindow = ({
         });
     };
 
-    // Color logic can be added later, keeping it simple for now as requested (Off, On, Settings)
+    const handleBrightness = (ip, value) => {
+        socket.emit('control_door', { ip, action: 'brightness', value: parseInt(value) });
+    };
+
+    const handleColor = (ip, value) => {
+        socket.emit('control_door', { ip, action: 'color', value: { h: parseInt(value) } });
+    };
 
     return (
         <div
             id="door"
-            onMouseDown={onMouseDown}
-            className={`absolute flex flex-col gap-2 p-4 rounded-xl backdrop-blur-md bg-black/60 border border-red-500/30 transition-all duration-200 select-none
-                ${activeDragElement === 'door' ? 'ring-2 ring-green-500 shadow-[0_0_30px_rgba(34,197,94,0.3)]' : 'shadow-[0_0_20px_rgba(6,182,212,0.1)]'}
+            className={`absolute flex flex-col transition-all duration-200 
+                backdrop-blur-xl bg-black/40 border border-white/10 shadow-2xl overflow-hidden rounded-2xl select-none
+                ${activeDragElement === "door" ? "ring-2 ring-green-500 bg-green-500/10" : ""}
             `}
             style={{
-                left: position.x,
-                top: position.y,
-                width: '360px',
-                minHeight: '250px',
-                transform: 'translate(-50%, -50%)',
+                left: position?.x || window.innerWidth / 2,
+                top: position?.y || window.innerHeight / 2,
+                transform: "translate(-50%, -50%)",
+                width: 360,
+                minHeight: 250,
+                pointerEvents: 'auto',
                 zIndex: zIndex
             }}
         >
-            {/* Header */}
-            <div data-drag-handle className="flex items-center justify-between pb-2 border-b border-white/10 mb-2 cursor-grab active:cursor-grabbing">
-                <div className="flex items-center gap-2">
+            {/* Header Bar - Drag Handle */}
+            <div
+                data-drag-handle
+                onMouseDown={(e) => onMouseDown && onMouseDown(e, 'door')}
+                className="h-8 flex items-center justify-between px-3 border-b border-white/10 mb-2 cursor-grab active:cursor-grabbing shrink-0"
+            >
+                <span className="text-xs font-bold tracking-widest text-red-500/70 flex items-center gap-2">
                     <div className={`w-2 h-2 rounded-full ${devices.length > 0 ? 'bg-green-500 animate-pulse' : 'bg-gray-500'}`} />
-                    <h3 className="font-bold text-red-400 tracking-wider text-sm">SMART DOOR CONTROL</h3>
-                </div>
+                    SMART DOOR CONTROL
+                </span>
                 <button
                     onClick={onClose}
-                    className="p-1 rounded hover:bg-white/10 transition-colors text-white/50 hover:text-white"
+                    className="text-gray-400 hover:text-red-400 hover:bg-red-500/20 p-1 rounded transition-colors"
                 >
-                    <X size={16} />
+                    <X size={14} />
                 </button>
             </div>
 
             {/* Content */}
-            <div className="flex-1 overflow-y-auto max-h-[400px] scrollbar-hide">
-
+            <div className="flex-1 overflow-y-auto max-h-[400px] p-4 scrollbar-hide">
                 {devices.length === 0 && !isThinking && (
                     <div className="flex flex-col items-center justify-center p-8 text-center opacity-50">
                         <p className="text-xs mb-4">No devices found. Ensure they are on the same network.</p>
@@ -128,10 +141,9 @@ const DoorWindow = ({
                                     <Power size={18} />
                                 )}
                             </button>
-
                         </div>
 
-                        {/* Controls */}
+                        {/* Brightness Control */}
                         {dev.has_brightness && dev.is_on && (
                             <div className="flex items-center gap-2 mt-2">
                                 <Sun size={14} className="text-yellow-500/70" />
@@ -166,9 +178,10 @@ const DoorWindow = ({
                     </div>
                 ))}
             </div>
+
             {/* Bottom Discover (if devices exist) */}
             {devices.length > 0 && (
-                <div className="pt-2 border-t border-white/10 mt-2 flex justify-end">
+                <div className="p-2 border-t border-white/10 mt-2 flex justify-end">
                     <button
                         onClick={handleDiscover}
                         className="p-1 text-white/30 hover:text-red-400 transition-colors"

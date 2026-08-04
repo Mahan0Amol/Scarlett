@@ -1,9 +1,21 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Globe, X } from 'lucide-react';
 
-const BrowserWindow = ({ imageSrc, logs, onClose, socket }) => {
-    const [input, setInput] = React.useState('');
+const BrowserWindow = ({
+    socket,
+    position,
+    onClose,
+    activeDragElement,
+    onMouseDown,
+    zIndex = 40,
+    data = {}
+}) => {
+    const [input, setInput] = useState('');
     const logsEndRef = useRef(null);
+
+    // Extract plugin-specific data from the data prop
+    const imageSrc = data.image;
+    const logs = data.logs || [];
 
     // Auto-scroll logs to bottom
     useEffect(() => {
@@ -16,21 +28,42 @@ const BrowserWindow = ({ imageSrc, logs, onClose, socket }) => {
         if (!input.trim()) return;
         if (socket) {
             socket.emit('prompt_web_agent', { prompt: input });
-            // Optionally add a local log
-            // But usually backend sends logs back.
+            // Backend will handle sending the logs back
         }
         setInput('');
     };
 
     return (
-        <div className="w-full h-full relative group bg-[#111] rounded-lg overflow-hidden flex flex-col border border-gray-800">
+        <div
+            id="browser"
+            className={`absolute flex flex-col transition-all duration-200 
+                backdrop-blur-xl bg-black/40 border border-white/10 shadow-2xl overflow-hidden rounded-lg
+                ${activeDragElement === "browser" ? "ring-2 ring-green-500 bg-green-500/10" : ""}
+            `}
+            style={{
+                left: position?.x || window.innerWidth / 2,
+                top: position?.y || window.innerHeight / 2,
+                transform: "translate(-50%, -50%)",
+                width: 550,
+                height: 380,
+                pointerEvents: 'auto',
+                zIndex: zIndex
+            }}
+        >
             {/* Header Bar - Drag Handle */}
-            <div data-drag-handle className="h-8 bg-[#222] border-b border-gray-700 flex items-center justify-between px-2 shrink-0 cursor-grab active:cursor-grabbing">
+            <div
+                data-drag-handle
+                onMouseDown={(e) => onMouseDown && onMouseDown(e, 'browser')}
+                className="h-8 bg-[#222] border-b border-gray-700 flex items-center justify-between px-2 shrink-0 cursor-grab active:cursor-grabbing"
+            >
                 <div className="flex items-center gap-2 text-gray-300 text-xs font-mono">
                     <Globe size={14} className="text-red-500" />
                     <span>WEB_AGENT_VIEW</span>
                 </div>
-                <button onClick={onClose} className="hover:bg-red-500/20 text-gray-400 hover:text-red-400 p-1 rounded transition-colors">
+                <button
+                    onClick={onClose}
+                    className="hover:bg-red-500/20 text-gray-400 hover:text-red-400 p-1 rounded transition-colors"
+                >
                     <X size={14} />
                 </button>
             </div>

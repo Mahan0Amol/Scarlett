@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, RefreshCw, Printer, Thermometer, Clock, FileText, CheckCircle, AlertTriangle, ExternalLink } from 'lucide-react';
+import { X, RefreshCw, Printer, Thermometer, Clock, FileText, ExternalLink } from 'lucide-react';
 
 const { shell } = window.require('electron');
 
@@ -8,13 +8,12 @@ const PrinterWindow = ({
     position,
     onClose,
     activeDragElement,
-    setActiveDragElement,
     onMouseDown,
-    zIndex = 40
+    zIndex = 40,
+    data = {}
 }) => {
     const [isDiscovering, setIsDiscovering] = useState(false);
-    const [printers, setPrinters] = useState([]); // [{ name, host, port, printer_type, status: {...}, camera_url: ... }]
-    const [selectedPrinter, setSelectedPrinter] = useState(null);
+    const [printers, setPrinters] = useState([]);
     const [slicingProgress, setSlicingProgress] = useState({ percent: 0, message: '', active: false });
 
     // Initial discovery on mount
@@ -22,46 +21,49 @@ const PrinterWindow = ({
         if (socket) {
             handleDiscover();
 
-            socket.on('printer_list', (list) => {
+            const handlePrinterList = (list) => {
                 setPrinters(list);
                 setIsDiscovering(false);
-            });
+            };
 
-            socket.on('print_status_update', (data) => {
-                // Update specific printer status in list
+            const handleStatusUpdate = (updateData) => {
                 setPrinters(prev => prev.map(p =>
-                    p.name === data.printer ? { ...p, status: data } : p
+                    p.name === updateData.printer ? { ...p, status: updateData } : p
                 ));
-            });
+            };
 
-            socket.on('slicing_progress', (data) => {
+            const handleSlicingProgress = (updateData) => {
                 setSlicingProgress({
-                    percent: data.percent,
-                    message: data.message,
-                    active: data.percent < 100
+                    percent: updateData.percent,
+                    message: updateData.message,
+                    active: updateData.percent < 100
                 });
-            });
+            };
 
-            socket.on('print_result', (result) => {
-                // Reset slicing when print starts or fails
+            const handlePrintResult = (result) => {
                 if (result.success) {
                     setSlicingProgress({ percent: 100, message: 'Done', active: false });
                 } else {
                     setSlicingProgress({ percent: 0, message: 'Failed', active: false });
                 }
-            });
+            };
+
+            socket.on('printer_list', handlePrinterList);
+            socket.on('print_status_update', handleStatusUpdate);
+            socket.on('slicing_progress', handleSlicingProgress);
+            socket.on('print_result', handlePrintResult);
+
+            return () => {
+                socket.off('printer_list', handlePrinterList);
+                socket.off('print_status_update', handleStatusUpdate);
+                socket.off('slicing_progress', handleSlicingProgress);
+                socket.off('print_result', handlePrintResult);
+            };
         }
-        return () => {
-            if (socket) {
-                socket.off('printer_list');
-                socket.off('print_status_update');
-                socket.off('slicing_progress');
-                socket.off('print_result');
-            }
-        };
     }, [socket]);
 
     const handleDiscover = () => {
+        if (!socket) return;
         setIsDiscovering(true);
         socket.emit('discover_printers');
         // Fallback timeout
@@ -74,40 +76,45 @@ const PrinterWindow = ({
         if (s.includes('print')) return 'text-purple-400';
         if (s.includes('paus')) return 'text-yellow-400';
         if (s.includes('error') || s.includes('fail')) return 'text-red-400';
-        return 'text-red-400';
+        return 'text-green-400'; // Default to idle/ready
     };
 
     return (
         <div
             id="printer"
-            onMouseDown={onMouseDown}
+            className={`absolute flex flex-col transition-all duration-200 
+                backdrop-blur-xl bg-black/80 border border-purple-500/30 shadow-2xl overflow-hidden rounded-2xl select-none
+                ${activeDragElement === "printer" ? "ring-2 ring-green-500 bg-green-500/10" : ""}
+            `}
             style={{
-                position: 'absolute',
-                left: position.x,
-                top: position.y,
-                transform: 'translate(-50%, -50%)',
-                width: '380px',
+                left: position?.x || window.innerWidth / 2,
+                top: position?.y || window.innerHeight / 2,
+                transform: "translate(-50%, -50%)",
+                width: 380,
+                pointerEvents: 'auto',
                 zIndex: zIndex
             }}
-            className="pointer-events-auto backdrop-blur-xl bg-black/80 border border-purple-500/30 rounded-2xl shadow-[0_0_30px_rgba(74,222,128,0.1)] overflow-hidden flex flex-col"
         >
-            {/* Header */}
-            <div data-drag-handle className="flex items-center justify-between p-4 border-b border-white/10 bg-white/5 cursor-grab active:cursor-grabbing">
-                <div className="flex items-center gap-2">
-                    <Printer size={16} className="text-purple-400" />
-                    <span className="text-xs font-bold tracking-widest text-purple-100 uppercase">3D Printers</span>
-                </div>
+            {/* Header Bar - Drag Handle */}
+            <div
+                data-drag-handle
+                onMouseDown={(e) => onMouseDown && onMouseDown(e, 'printer')}
+                className="h-8 flex items-center justify-between px-3 border-b border-white/10 bg-white/5 cursor-grab active:cursor-grabbing shrink-0"
+            >
+                <span className="text-xs font-bold tracking-widest text-purple-100 uppercase flex items-center gap-2">
+                    <Printer size={14} className="text-purple-400" /> 3D Printers
+                </span>
                 <div className="flex items-center gap-2">
                     <button
                         onClick={handleDiscover}
                         disabled={isDiscovering}
-                        className={`p-1.5 hover:bg-white/10 rounded-full transition-colors ${isDiscovering ? 'animate-spin text-purple-400' : 'text-gray-400 hover:text-purple-400'}`}
+                        className={`p-1 hover:bg-white/10 rounded-full transition-colors ${isDiscovering ? 'animate-spin text-purple-400' : 'text-gray-400 hover:text-purple-400'}`}
                     >
                         <RefreshCw size={14} />
                     </button>
                     <button
                         onClick={onClose}
-                        className="p-1.5 hover:bg-white/10 rounded-full text-gray-400 hover:text-white transition-colors"
+                        className="p-1 hover:bg-white/10 rounded-full text-gray-400 hover:text-white transition-colors"
                     >
                         <X size={14} />
                     </button>
@@ -137,7 +144,7 @@ const PrinterWindow = ({
                                         const ip = e.target.value.trim();
                                         const nameInput = document.getElementById('printer-name-input');
                                         const name = nameInput?.value.trim() || ip;
-                                        if (ip) {
+                                        if (ip && socket) {
                                             socket.emit('add_printer', { host: ip, name: name, type: 'moonraker' });
                                             e.target.value = '';
                                             if (nameInput) nameInput.value = '';
@@ -153,7 +160,7 @@ const PrinterWindow = ({
                                     const nameInput = document.getElementById('printer-name-input');
                                     const ip = ipInput?.value.trim();
                                     const name = nameInput?.value.trim() || ip;
-                                    if (ip) {
+                                    if (ip && socket) {
                                         socket.emit('add_printer', { host: ip, name: name, type: 'moonraker' });
                                         if (ipInput) ipInput.value = '';
                                         if (nameInput) nameInput.value = '';

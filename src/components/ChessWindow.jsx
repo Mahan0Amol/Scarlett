@@ -1,9 +1,18 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect } from "react";
 import { Chessboard } from "react-chessboard";
-import { X, Gamepad2 } from "lucide-react";
 import { Chess } from "chess.js";
+import { X, Gamepad2 } from "lucide-react";
 
-const ChessWindow = ({ socket, onClose, position, activeDragElement, onMouseDown, zIndex = 40 }) => {
+const ChessWindow = ({
+    socket,
+    position,
+    onClose,
+    activeDragElement,
+    onMouseDown,
+    zIndex = 40,
+    // data prop is optional here as chess manages its own state via socket, but kept for consistency
+    data = {} 
+}) => {
     const [game, setGame] = useState(new Chess());
     const [fen, setFen] = useState("start");
     const [rightClickedSquares, setRightClickedSquares] = useState({});
@@ -12,10 +21,10 @@ const ChessWindow = ({ socket, onClose, position, activeDragElement, onMouseDown
     useEffect(() => {
         if (!socket) return;
 
-        const handleState = (data) => {
-            if (data.fen) {
-                setFen(data.fen);
-                setGame(new Chess(data.fen));
+        const handleState = (stateData) => {
+            if (stateData.fen) {
+                setFen(stateData.fen);
+                setGame(new Chess(stateData.fen));
             }
         };
 
@@ -48,7 +57,7 @@ const ChessWindow = ({ socket, onClose, position, activeDragElement, onMouseDown
         }
     };
 
-    // نمایش حرکات ممکن با کلیک روی مهره
+    // Show possible moves on piece click
     const getMoveOptions = (square) => {
         const moves = game.moves({ square, verbose: true });
         if (moves.length === 0) {
@@ -70,32 +79,35 @@ const ChessWindow = ({ socket, onClose, position, activeDragElement, onMouseDown
     return (
         <div
             id="chess"
-            className={`absolute flex flex-col p-4 rounded-xl backdrop-blur-md bg-black/60 border border-green-500/30 select-none
-            ${activeDragElement === "chess" ? "ring-2 ring-green-500 shadow-[0_0_30px_rgba(34,197,94,0.3)]" : "shadow-[0_0_20px_rgba(0,0,0,0.45)]"}`}
+            className={`absolute flex flex-col p-4 rounded-xl backdrop-blur-xl bg-black/40 border border-white/10 shadow-2xl overflow-hidden select-none transition-all duration-200
+                ${activeDragElement === "chess" ? "ring-2 ring-green-500 bg-green-500/10" : ""}`}
             style={{
-                left: position.x,
-                top: position.y,
-                width: 400,
+                left: position?.x || window.innerWidth / 2,
+                top: position?.y || window.innerHeight / 2,
                 transform: "translate(-50%, -50%)",
-                zIndex
+                width: 400,
+                pointerEvents: 'auto',
+                zIndex: zIndex
             }}
         >
-            {/* HEADER */}
+            {/* Header Bar - Drag Handle */}
             <div
                 data-drag-handle
-                onMouseDown={onMouseDown}
-                className="flex items-center justify-between pb-2 mb-2 border-b border-white/10 cursor-grab active:cursor-grabbing"
+                onMouseDown={(e) => onMouseDown && onMouseDown(e, 'chess')}
+                className="h-8 flex items-center justify-between px-2 mb-2 border-b border-white/10 cursor-grab active:cursor-grabbing shrink-0"
             >
-                <div className="flex items-center gap-2">
-                    <Gamepad2 size={16} className="text-green-400" />
-                    <span className="text-green-300 font-bold text-sm tracking-wider">CHESS MATCH</span>
-                </div>
-                <button onClick={onClose} className="text-white/40 hover:text-white transition-colors">
-                    <X size={16} />
+                <span className="text-xs font-bold tracking-widest text-green-500/70 flex items-center gap-2">
+                    <Gamepad2 size={14} /> CHESS MATCH
+                </span>
+                <button
+                    onClick={onClose}
+                    className="text-gray-400 hover:text-red-400 hover:bg-red-500/20 p-1 rounded transition-colors"
+                >
+                    <X size={14} />
                 </button>
             </div>
 
-            {/* BOARD */}
+            {/* Board */}
             <div className="w-full aspect-square">
                 <Chessboard 
                     position={fen} 
