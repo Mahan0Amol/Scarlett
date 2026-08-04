@@ -1,3 +1,6 @@
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import JSONResponse
 import ipaddress
 import socket
 import sys
@@ -1084,6 +1087,38 @@ async def chess_state_request(sid):
         "turn": "white" if agent.board.turn == chess.WHITE else "black",
         "is_game_over": agent.board.is_game_over()
     }, room=sid)
+
+
+# ====================== FULL SETTINGS WEB UI ======================
+
+@app.get("/full-settings", response_class=HTMLResponse)
+async def get_full_settings_page():
+    # Read the HTML file from the web folder
+    html_file_path = Path(__file__).parent / "web" / "full_settings.html"
+    if html_file_path.exists():
+        return HTMLResponse(content=html_file_path.read_text(encoding="utf-8"))
+    return HTMLResponse(content="<h1>Settings file not found!</h1>", status_code=404)
+
+@app.get("/api/settings/data")
+async def get_settings_data():
+    return SETTINGS
+
+@app.post("/api/settings/data")
+async def update_settings_data(data: dict):
+    if "face_auth_enabled" in data:
+        SETTINGS["face_auth_enabled"] = data["face_auth_enabled"]
+    if "camera_flipped" in data:
+        SETTINGS["camera_flipped"] = data["camera_flipped"]
+    if "tool_permissions" in data:
+        SETTINGS["tool_permissions"].update(data["tool_permissions"])
+    
+    save_settings()
+    
+    if audio_loop:
+        audio_loop.update_permissions(SETTINGS["tool_permissions"])
+        
+    return JSONResponse(status_code=200, content={"status": "success"})
+
 
 if __name__ == "__main__":
     uvicorn.run(

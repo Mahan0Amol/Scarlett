@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X } from 'lucide-react';
+import { X, ExternalLink } from 'lucide-react';
 
 const TOOLS = [
     { id: 'generate_cad', label: 'Generate CAD' },
@@ -40,10 +40,8 @@ const SettingsWindow = ({
     const [faceAuthEnabled, setFaceAuthEnabled] = useState(false);
 
     useEffect(() => {
-        // Request initial permissions
         socket.emit('get_settings');
 
-        // Listen for updates
         const handleSettings = (settings) => {
             console.log("Received settings:", settings);
             if (settings) {
@@ -56,8 +54,6 @@ const SettingsWindow = ({
         };
 
         socket.on('settings', handleSettings);
-        // Also listen for legacy tool_permissions if needed, but 'settings' covers it
-        // socket.on('tool_permissions', handlePermissions); 
 
         return () => {
             socket.off('settings', handleSettings);
@@ -65,19 +61,14 @@ const SettingsWindow = ({
     }, [socket]);
 
     const togglePermission = (toolId) => {
-        const currentVal = permissions[toolId] !== false; // Default True
+        const currentVal = permissions[toolId] !== false;
         const nextVal = !currentVal;
-
-        // Update local mostly for responsiveness, but socket roundtrip handles truth
-        // setPermissions(prev => ({ ...prev, [toolId]: nextVal }));
-
-        // Send update
         socket.emit('update_settings', { tool_permissions: { [toolId]: nextVal } });
     };
 
     const toggleFaceAuth = () => {
         const newVal = !faceAuthEnabled;
-        setFaceAuthEnabled(newVal); // Optimistic Update
+        setFaceAuthEnabled(newVal);
         localStorage.setItem('face_auth_enabled', newVal);
         socket.emit('update_settings', { face_auth_enabled: newVal });
     };
@@ -86,6 +77,12 @@ const SettingsWindow = ({
         const newVal = !isCameraFlipped;
         setIsCameraFlipped(newVal);
         socket.emit('update_settings', { camera_flipped: newVal });
+    };
+
+    // Function to open the web dashboard in default browser
+    const openFullSettings = () => {
+        const { shell } = window.require('electron');
+        shell.openExternal('http://localhost:8000/full-settings');
     };
 
     return (
@@ -194,31 +191,8 @@ const SettingsWindow = ({
                 </div>
             </div>
 
-            {/* Tool Permissions Section */}
-            {/* <div className="mb-6">
-                <h3 className="text-red-400 font-bold mb-3 text-xs uppercase tracking-wider opacity-80">Tool Confirmations</h3>
-                <div className="space-y-2 max-h-40 overflow-y-auto pr-2 custom-scrollbar">
-                    {TOOLS.map(tool => {
-                        const isRequired = permissions[tool.id] !== false; // Default True
-                        return (
-                            <div key={tool.id} className="flex items-center justify-between text-xs bg-gray-900/50 p-2 rounded border border-red-900/30">
-                                <span className="text-red-100/80">{tool.label}</span>
-                                <button
-                                    onClick={() => togglePermission(tool.id)}
-                                    className={`relative w-8 h-4 rounded-full transition-colors duration-200 ${isRequired ? 'bg-red-500/80' : 'bg-gray-700'}`}
-                                >
-                                    <div
-                                        className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform duration-200 ${isRequired ? 'translate-x-4' : 'translate-x-0'}`}
-                                    />
-                                </button>
-                            </div>
-                        );
-                    })}
-                </div>
-            </div> */}
-
             {/* Memory Section */}
-            <div>
+            <div className="mb-6">
                 <h3 className="text-red-400 font-bold mb-2 text-xs uppercase tracking-wider opacity-80">Memory Data</h3>
                 <div className="flex flex-col gap-2">
                     <label className="text-[10px] text-red-500/60 uppercase">Upload Memory For Chat</label>
@@ -229,6 +203,20 @@ const SettingsWindow = ({
                         className="text-xs text-red-100 bg-gray-900 border border-red-800 rounded p-2 file:mr-2 file:py-1 file:px-2 file:rounded-full file:border-0 file:text-[10px] file:font-semibold file:bg-red-900 file:text-red-400 hover:file:bg-red-800 cursor-pointer"
                     />
                 </div>
+            </div>
+
+            {/* Full Settings Web Dashboard Button */}
+            <div className="pt-4 mt-2 border-t border-red-900/30">
+                <button 
+                    onClick={openFullSettings}
+                    className="w-full flex items-center justify-center gap-2 bg-red-900/30 hover:bg-red-800/50 border border-red-500/40 text-red-300 font-bold py-2 text-xs rounded transition-all"
+                >
+                    <ExternalLink size={14} />
+                    Open Full Settings in Browser
+                </button>
+                <p className="text-[10px] text-gray-500 text-center mt-2">
+                    Opens the advanced configuration panel.
+                </p>
             </div>
         </div>
     );
