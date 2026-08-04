@@ -10,7 +10,6 @@ const ChessWindow = ({
     activeDragElement,
     onMouseDown,
     zIndex = 40,
-    // data prop is optional here as chess manages its own state via socket, but kept for consistency
     data = {} 
 }) => {
     const [game, setGame] = useState(new Chess());
@@ -21,18 +20,25 @@ const ChessWindow = ({
     useEffect(() => {
         if (!socket) return;
 
-        const handleState = (stateData) => {
-            if (stateData.fen) {
-                setFen(stateData.fen);
-                setGame(new Chess(stateData.fen));
+        const handlePluginUpdate = (updateData) => {
+            if (updateData.plugin === "chess" && updateData.data?.fen) {
+                setFen(updateData.data.fen);
+                setGame(new Chess(updateData.data.fen));
             }
         };
 
-        socket.on("chess_state", handleState);
-        socket.emit("chess_state_request");
+        // Listen for generic plugin updates
+        socket.on("plugin_update", handlePluginUpdate);
+        
+        // Request initial state using the generic plugin action
+        socket.emit("plugin_action", { 
+            plugin: "chess", 
+            action: "chess_state_request", 
+            payload: {} 
+        });
 
         return () => {
-            socket.off("chess_state", handleState);
+            socket.off("plugin_update", handlePluginUpdate);
         };
     }, [socket]);
 
@@ -43,20 +49,26 @@ const ChessWindow = ({
             const move = game.move({
                 from: sourceSquare,
                 to: targetSquare,
-                promotion: piece[1].toLowerCase() ?? "q",
+                // Fix: Always default to Queen ('q') for promotion validity
+                promotion: piece[1].toLowerCase() === "p" ? "q" : undefined, 
             });
 
             if (move === null) return false; // Illegal move
 
             setFen(game.fen());
-            socket.emit("chess_user_move", { move: move.from + move.to + (move.promotion || '') });
+            
+            // Send move to backend using the generic plugin action
+            socket.emit("plugin_action", { 
+                plugin: "chess", 
+                action: "chess_user_move", 
+                payload: { move: move.from + move.to + (move.promotion || '') } 
+            });
             
             return true;
         } catch (e) {
             return false;
         }
     };
-
     // Show possible moves on piece click
     const getMoveOptions = (square) => {
         const moves = game.moves({ square, verbose: true });

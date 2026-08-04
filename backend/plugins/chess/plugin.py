@@ -2,19 +2,10 @@ import chess
 import asyncio
 
 class ChessAgent:
-    _instance = None
-
-    def __new__(cls, sio=None):
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance._initialized = False
-        return cls._instance
-
-    def __init__(self, sio=None):
-        if self._initialized:
-            return
-        self._initialized = True
-        self.sio = sio
+    def __init__(self):
+        self.ctx = None  # Set dynamically by @tool handlers
+        self.sio = None  # Set dynamically by @ui_action handlers
+        self.sid = None  # Set dynamically by @ui_action handlers
         self.board = chess.Board()
         self.game_active = False
 
@@ -22,16 +13,24 @@ class ChessAgent:
         self.board.reset()
         self.game_active = True
 
+    def get_state(self):
+        return {
+            "fen": self.board.fen(),
+            "turn": "white" if self.board.turn == chess.WHITE else "black",
+            "is_check": self.board.is_check(),
+            "is_checkmate": self.board.is_checkmate(),
+            "is_stalemate": self.board.is_stalemate(),
+            "is_game_over": self.board.is_game_over()
+        }
+
     async def emit_state(self):
-        if self.sio:
-            await self.sio.emit("chess_state", {
-                "fen": self.board.fen(),
-                "turn": "white" if self.board.turn == chess.WHITE else "black",
-                "is_check": self.board.is_check(),
-                "is_checkmate": self.board.is_checkmate(),
-                "is_stalemate": self.board.is_stalemate(),
-                "is_game_over": self.board.is_game_over()
-            })
+        state = self.get_state()
+        # 1. Prefer fresh UI socket info if available (prevents stale ctx issue)
+        if self.sio and self.sid:
+            await self.sio.emit("plugin_update", {"plugin": "chess", "data": state}, room=self.sid)
+        # 2. Fallback to AI context if triggered by AI tool
+        elif self.ctx:
+            self.ctx.emit("plugin_update", {"plugin": "chess", "data": state})
 
     async def start_game(self, fc):
         self.reset_game()
@@ -66,6 +65,20 @@ class ChessAgent:
 
         except Exception as e:
             return f"Invalid move format or error: {e}. Use UCI format like 'e2e4'."
+
+    def apply_user_move(self, move_uci):
+        """Called from UI when user drops a piece"""
+        if not self.game_active:
+            return "Game not active"
+        try:
+            move = chess.Move.from_uci(move_uci)
+            if move not in self.board.legal_moves:
+                return "Illegal move"
+            
+            self.board.push(move)
+            return "Move applied successfully"
+        except Exception:
+            return "Invalid move format"
 
     async def handle_function_call(self, fc):
         func_map = {

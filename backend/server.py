@@ -41,14 +41,24 @@ app_socketio = socketio.ASGIApp(sio, app)
 
 from plugins.base import ui_registry
 
-def wire_ui_events():
-    for event_name, handler_func in ui_registry.all().items():
-        async def wrapped_handler(sid, data=None, _func=handler_func):
-            await _func(sio=sio, sid=sid, data=data or {})
-        
-        sio.on(event_name, wrapped_handler)
-
-wire_ui_events()
+@sio.on("plugin_action")
+async def handle_plugin_action(sid, data):
+    """
+    Generic event router for all plugin UI actions.
+    data = { "plugin": "chess", "action": "chess_user_move", "payload": {...} }
+    """
+    action_name = data.get("action")
+    payload = data.get("payload", {})
+    
+    # Find the handler registered by @ui_action
+    handler = ui_registry.all().get(action_name)
+    
+    if handler:
+        print(f"[SERVER] Routing UI action '{action_name}' to plugin")
+        # Pass the current socket info and payload to the plugin
+        await handler(sio=sio, sid=sid, data=payload)
+    else:
+        print(f"[SERVER] No UI handler found for action: {action_name}")
 
 import signal
 
