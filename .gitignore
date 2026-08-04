@@ -46,3 +46,5 @@ Scarlett.zip
 items.json
 backend/items.json
 settings.json
+backend/plugins/email/credentials.json
+backend/plugins/email/token.json
