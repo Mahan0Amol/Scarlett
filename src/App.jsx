@@ -45,6 +45,7 @@ function App() {
     const [selectedSpeakerId, setSelectedSpeakerId] = useState(() => localStorage.getItem('selectedSpeakerId') || '');
     const [selectedWebcamId, setSelectedWebcamId] = useState(() => localStorage.getItem('selectedWebcamId') || '');
     const [showSettings, setShowSettings] = useState(false);
+    const [pendingDeviceSettings, setPendingDeviceSettings] = useState(null);
 
     // ====================== state جدید برای مدیریت پلاگین‌ها ======================
     const [activeWindows, setActiveWindows] = useState({});
@@ -300,11 +301,22 @@ function App() {
             if (!data.authenticated) setIsLockScreenVisible(true);
         });
         socket.on('settings', (settings) => {
+            console.log("[Settings] Received:", settings);
             if (settings && typeof settings.face_auth_enabled !== 'undefined') {
                 setFaceAuthEnabled(settings.face_auth_enabled);
                 localStorage.setItem('face_auth_enabled', settings.face_auth_enabled);
             }
-            if (typeof settings.camera_flipped !== 'undefined') setIsCameraFlipped(settings.camera_flipped);
+            if (typeof settings.camera_flipped !== 'undefined') {
+                setIsCameraFlipped(settings.camera_flipped);
+            }
+            
+            // Apply new settings from Web UI
+            if (typeof settings.cursor_sensitivity !== 'undefined') {
+                setCursorSensitivity(settings.cursor_sensitivity);
+            }
+            // Device matching moved to a separate useEffect (see pendingDeviceSettings)
+            // to avoid a stale closure over micDevices/speakerDevices/webcamDevices.
+            setPendingDeviceSettings(settings);
         });
         socket.on('error', (data) => addMessage('System', `Error: ${data.msg}`));
         
@@ -379,6 +391,22 @@ function App() {
             stopMicVisualizer(); stopVideo();
         };
     }, []);
+
+    useEffect(() => {
+        if (!pendingDeviceSettings) return;
+        if (pendingDeviceSettings.selected_mic) {
+            const foundMic = micDevices.find(d => d.label === pendingDeviceSettings.selected_mic);
+            if (foundMic) setSelectedMicId(foundMic.deviceId);
+        }
+        if (pendingDeviceSettings.selected_speaker) {
+            const foundSpk = speakerDevices.find(d => d.label === pendingDeviceSettings.selected_speaker);
+            if (foundSpk) setSelectedSpeakerId(foundSpk.deviceId);
+        }
+        if (pendingDeviceSettings.selected_webcam) {
+            const foundCam = webcamDevices.find(d => d.label === pendingDeviceSettings.selected_webcam);
+            if (foundCam) setSelectedWebcamId(foundCam.deviceId);
+        }
+    }, [pendingDeviceSettings, micDevices, speakerDevices, webcamDevices]);
 
     useEffect(() => {
         if (socket.connected) { setStatus('Connected'); socket.emit('get_settings'); }

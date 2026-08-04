@@ -1,3 +1,4 @@
+from dotenv import load_dotenv
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
@@ -92,8 +93,7 @@ authenticator = None
 # constructed here.
 smart_agent = get_smart_agent()
 cmd_agent = get_cmd_agent()
-SETTINGS_FILE = "settings.json"
-
+SETTINGS_FILE = Path(__file__).parent / "settings.json"
 DEFAULT_SETTINGS = {
     "face_auth_enabled": False, # Default OFF as requested
     "tool_permissions": {
@@ -109,7 +109,12 @@ DEFAULT_SETTINGS = {
     "printers": [], # List of {host, port, name, type}
     "kasa_devices": [], # List of {ip, alias, model}
     "door_devices": [], # List of {ip, alias, model}
-    "camera_flipped": False # Invert cursor horizontal direction
+    "camera_flipped": False, # Invert cursor horizontal direction
+    "cursor_sensitivity": 2.0,
+    "selected_mic": "",
+    "selected_speaker": "",
+    "selected_webcam": ""
+
 }
 
 SETTINGS = DEFAULT_SETTINGS.copy()
@@ -1091,13 +1096,16 @@ async def chess_state_request(sid):
 
 # ====================== FULL SETTINGS WEB UI ======================
 
+ENV_FILE_PATH = Path(__file__).parent / ".env"
+
 @app.get("/full-settings", response_class=HTMLResponse)
 async def get_full_settings_page():
-    # Read the HTML file from the web folder
     html_file_path = Path(__file__).parent / "web" / "full_settings.html"
     if html_file_path.exists():
         return HTMLResponse(content=html_file_path.read_text(encoding="utf-8"))
     return HTMLResponse(content="<h1>Settings file not found!</h1>", status_code=404)
+
+# --- General Settings API ---
 
 @app.get("/api/settings/data")
 async def get_settings_data():
@@ -1112,14 +1120,70 @@ async def update_settings_data(data: dict):
     if "tool_permissions" in data:
         SETTINGS["tool_permissions"].update(data["tool_permissions"])
     
+    # Add these lines for devices and cursor
+    if "cursor_sensitivity" in data:
+        SETTINGS["cursor_sensitivity"] = data["cursor_sensitivity"]
+    if "selected_mic" in data:
+        SETTINGS["selected_mic"] = data["selected_mic"]
+    if "selected_speaker" in data:
+        SETTINGS["selected_speaker"] = data["selected_speaker"]
+    if "selected_webcam" in data:
+        SETTINGS["selected_webcam"] = data["selected_webcam"]
+        
     save_settings()
     
     if audio_loop:
         audio_loop.update_permissions(SETTINGS["tool_permissions"])
         
+    # Notify frontend to update devices live
+    if sio:
+        await sio.emit('settings', SETTINGS)
+        
     return JSONResponse(status_code=200, content={"status": "success"})
 
+# --- Environment Variables API ---
 
+@app.get("/api/env/data")
+async def get_env_data():
+    vars_list = []
+    if ENV_FILE_PATH.exists():
+        lines = ENV_FILE_PATH.read_text(encoding="utf-8").splitlines()
+        for line in lines:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if "=" in line:
+                key, value = line.split("=", 1)
+                key = key.strip()
+                value = value.strip()
+                
+                if len(value) >= 2 and ((value[0] == '"' and value[-1] == '"') or (value[0] == "'" and value[-1] == "'")):
+                    value = value[1:-1]
+                    
+                vars_list.append({"key": key, "value": value})
+    return {"vars": vars_list}
+
+@app.post("/api/env/data")
+async def update_env_data(data: dict):
+    vars_list = data.get("vars", [])
+    lines = []
+    for item in vars_list:
+        key = item.get("key", "").strip()
+        value = item.get("value", "").strip()
+        if key:
+            if " " in value or "#" in value:
+                if not (value.startswith('"') and value.endswith('"')) and not (value.startswith("'") and value.endswith("'")):
+                    value = f'"{value}"'
+            lines.append(f"{key}={value}")
+    
+    try:
+        ENV_FILE_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        load_dotenv(ENV_FILE_PATH, override=True)
+        return JSONResponse(status_code=200, content={"status": "success", "message": ".env updated."})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+    
 if __name__ == "__main__":
     uvicorn.run(
         "server:app_socketio", 

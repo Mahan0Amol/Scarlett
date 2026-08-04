@@ -16,6 +16,7 @@
         .neon-border:focus { border-color: #dc2626; box-shadow: 0 0 10px rgba(220, 38, 38, 0.3); outline: none; }
         input[type="range"] { -webkit-appearance: none; height: 4px; background: #374151; border-radius: 2px; outline: none; }
         input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%; background: #dc2626; cursor: pointer; box-shadow: 0 0 10px rgba(220, 38, 38, 0.5); }
+        select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23dc2626'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 0.5rem center; background-size: 1.5em 1.5em; padding-right: 2.5rem; }
     </style>
 </head>
 <body class="min-h-screen flex flex-col items-center py-10 px-4">
@@ -24,14 +25,40 @@
     <div class="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-red-900/10 rounded-full blur-[120px] pointer-events-none"></div>
     <div class="fixed inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-10 pointer-events-none mix-blend-overlay"></div>
 
-    <div class="z-10 w-full max-w-3xl">
+    <div class="z-10 w-full max-w-4xl">
         <!-- Header -->
         <div class="flex items-center justify-between mb-10 pb-4 border-b border-red-500/20">
             <div>
                 <h1 class="text-3xl font-extrabold tracking-[0.2em] text-red-400 neon-text">SCARLETT</h1>
                 <p class="text-xs text-gray-500 mono mt-1">SYSTEM CONTROL PANEL V2.0</p>
             </div>
-            <button id="saveBtn" class="bg-red-600 hover:bg-red-500 text-white font-bold py-2 px-6 rounded-lg transition-all shadow-[0_0_20px_rgba(220,38,38,0.4)]">Save Changes</button>
+            <button id="saveSettingsBtn" class="bg-red-600 hover:bg-red-500 text-white font-bold py-2 px-6 rounded-lg transition-all shadow-[0_0_20px_rgba(220,38,38,0.4)]">Save Settings</button>
+        </div>
+
+        <!-- Devices & Input Card -->
+        <div class="glass rounded-2xl p-6 mb-6 shadow-xl">
+            <h2 class="text-sm font-bold text-gray-400 tracking-widest mb-4 uppercase">Devices & Input</h2>
+            <div class="grid grid-cols-2 gap-4 mb-4">
+                <div>
+                    <label class="text-xs text-gray-500 uppercase tracking-wider">Microphone</label>
+                    <select id="mic_select" class="w-full bg-black/40 border border-white/10 rounded-lg p-2 text-sm text-red-300 mono neon-border mt-1"></select>
+                </div>
+                <div>
+                    <label class="text-xs text-gray-500 uppercase tracking-wider">Speaker</label>
+                    <select id="speaker_select" class="w-full bg-black/40 border border-white/10 rounded-lg p-2 text-sm text-red-300 mono neon-border mt-1"></select>
+                </div>
+                <div class="col-span-2">
+                    <label class="text-xs text-gray-500 uppercase tracking-wider">Webcam</label>
+                    <select id="webcam_select" class="w-full bg-black/40 border border-white/10 rounded-lg p-2 text-sm text-red-300 mono neon-border mt-1"></select>
+                </div>
+            </div>
+            <div class="mt-6">
+                <div class="flex justify-between mb-2">
+                    <h3 class="text-red-400 font-bold text-xs uppercase tracking-wider opacity-80">Cursor Sensitivity</h3>
+                    <span id="sensitivity_val" class="text-xs text-red-500">2.0x</span>
+                </div>
+                <input type="range" id="cursor_sensitivity" min="1.0" max="5.0" step="0.1" value="2.0" class="w-full accent-red-400 cursor-pointer h-1 bg-gray-800 rounded-lg appearance-none">
+            </div>
         </div>
 
         <!-- General Settings Card -->
@@ -63,20 +90,30 @@
             </div>
         </div>
 
-        <!-- Tool Permissions Card -->
+        <!-- Environment Variables (.env) Card -->
         <div class="glass rounded-2xl p-6 mb-6 shadow-xl">
-            <h2 class="text-sm font-bold text-gray-400 tracking-widest mb-4 uppercase">AI Tool Permissions</h2>
-            <div id="permissions_grid" class="grid grid-cols-2 gap-4">
-                <!-- JS will populate this -->
+            <div class="flex justify-between items-center mb-4">
+                <div>
+                    <h2 class="text-sm font-bold text-gray-400 tracking-widest uppercase">Environment Variables (.env)</h2>
+                    <p class="text-xs text-gray-500 mt-1">Add, edit, or remove API keys and configuration secrets.</p>
+                </div>
+                <button id="addVarBtn" class="bg-green-600/20 hover:bg-green-600/40 border border-green-500/30 text-green-400 font-bold py-2 px-4 rounded-lg transition-all text-sm">+ Add Variable</button>
             </div>
+            
+            <div class="flex gap-2 mb-2 px-1 text-xs font-bold text-gray-500 uppercase tracking-wider">
+                <div class="w-1/3">Key</div>
+                <div class="w-2/3">Value</div>
+                <div class="w-10"></div>
+            </div>
+            <div id="env_vars_container" class="space-y-2"></div>
+
+            <button id="saveEnvBtn" class="mt-6 w-full bg-gray-700 hover:bg-gray-600 text-white font-bold py-3 px-6 rounded-lg transition-all">Save .env File</button>
         </div>
 
-        <!-- Status Message -->
         <div id="status_msg" class="hidden text-center text-green-400 mono text-sm mt-4 animate-pulse"></div>
     </div>
 
     <script>
-        // Simple JS to handle toggle dots
         document.querySelectorAll('.toggle-checkbox').forEach(cb => {
             cb.addEventListener('change', () => {
                 const dot = cb.parentElement.querySelector('.toggle-dot');
@@ -85,65 +122,89 @@
             });
         });
 
-        // Fetch current settings
+        // Load Devices using Web API
+        async function loadDevices() {
+            try {
+                // Request permission to get labels
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+                stream.getTracks().forEach(track => track.stop());
+                
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const micSel = document.getElementById('mic_select');
+                const spkSel = document.getElementById('speaker_select');
+                const camSel = document.getElementById('webcam_select');
+                
+                devices.forEach(d => {
+                    const opt = document.createElement('option');
+                    opt.value = d.label; // Save label instead of ID
+                    opt.text = d.label || `Unknown ${d.kind}`;
+                    if (d.kind === 'audioinput') micSel.appendChild(opt.cloneNode(true));
+                    if (d.kind === 'audiooutput') spkSel.appendChild(opt.cloneNode(true));
+                    if (d.kind === 'videoinput') camSel.appendChild(opt.cloneNode(true));
+                });
+            } catch(e) { console.error("Device enumeration failed:", e); }
+        }
+
         async function loadSettings() {
             const res = await fetch('/api/settings/data');
             const data = await res.json();
-            
             document.getElementById('face_auth').checked = data.face_auth_enabled;
             document.getElementById('camera_flipped').checked = data.camera_flipped;
             
-            // Trigger dot animation on load
+            const sens = data.cursor_sensitivity || 2.0;
+            document.getElementById('cursor_sensitivity').value = sens;
+            document.getElementById('sensitivity_val').textContent = `${sens}x`;
+
+            if(data.selected_mic) document.getElementById('mic_select').value = data.selected_mic;
+            if(data.selected_speaker) document.getElementById('speaker_select').value = data.selected_speaker;
+            if(data.selected_webcam) document.getElementById('webcam_select').value = data.selected_webcam;
+
             document.querySelectorAll('.toggle-checkbox').forEach(cb => {
                 if(cb.checked) cb.parentElement.querySelector('.toggle-dot').style.transform = 'translateX(24px)';
             });
-
-            const grid = document.getElementById('permissions_grid');
-            grid.innerHTML = '';
-            const perms = data.tool_permissions;
-            for(const [key, val] of Object.entries(perms)) {
-                const formattedKey = key.replace(/_/g, ' ');
-                grid.innerHTML += `
-                    <div class="flex items-center justify-between bg-black/30 p-3 rounded-lg border border-white/5">
-                        <span class="text-sm capitalize">${formattedKey}</span>
-                        <label class="relative inline-flex items-center cursor-pointer">
-                            <input type="checkbox" class="sr-only toggle-checkbox perm-check" data-key="${key}" ${val ? 'checked' : ''}>
-                            <div class="w-10 h-5 toggle-bg rounded-full transition-all"></div>
-                            <span class="absolute left-1 top-1 bg-white w-3 h-3 rounded-full transition-transform toggle-dot"></span>
-                        </label>
-                    </div>
-                `;
-            }
-            // Re-bind dots for dynamically added elements
-            document.querySelectorAll('.perm-check').forEach(cb => {
-                cb.addEventListener('change', () => {
-                    const dot = cb.parentElement.querySelector('.toggle-dot');
-                    if(cb.checked) dot.style.transform = 'translateX(20px)';
-                    else dot.style.transform = 'translateX(0)';
-                });
-                if(cb.checked) cb.parentElement.querySelector('.toggle-dot').style.transform = 'translateX(20px)';
-            });
         }
 
-        // Save settings
-        document.getElementById('saveBtn').addEventListener('click', async () => {
-            const perms = {};
-            document.querySelectorAll('.perm-check').forEach(cb => {
-                perms[cb.dataset.key] = cb.checked;
-            });
+        async function loadEnv() {
+            const res = await fetch('/api/env/data');
+            const data = await res.json();
+            const container = document.getElementById('env_vars_container');
+            container.innerHTML = '';
+            if (data.vars && data.vars.length > 0) {
+                data.vars.forEach(v => addEnvRow(v.key, v.value));
+            } else { addEnvRow('', ''); }
+        }
 
+        function addEnvRow(key, value) {
+            const container = document.getElementById('env_vars_container');
+            const row = document.createElement('div');
+            row.className = 'flex gap-2 items-center';
+            row.innerHTML = `
+                <input type="text" class="env-key w-1/3 bg-black/40 border border-white/10 rounded-lg p-2 text-xs text-red-300 mono neon-border" placeholder="API_KEY" value="${key}">
+                <input type="text" class="env-value w-2/3 bg-black/40 border border-white/10 rounded-lg p-2 text-xs text-green-400 mono neon-border" placeholder="your_value_here" value="${value}">
+                <button class="delete-env-row w-10 h-10 flex items-center justify-center bg-red-900/20 hover:bg-red-900/50 border border-red-500/20 text-red-500 rounded-lg transition-all">X</button>
+            `;
+            container.appendChild(row);
+            row.querySelector('.delete-env-row').addEventListener('click', () => row.remove());
+        }
+
+        document.getElementById('cursor_sensitivity').addEventListener('input', (e) => {
+            document.getElementById('sensitivity_val').textContent = `${e.target.value}x`;
+        });
+
+        document.getElementById('saveSettingsBtn').addEventListener('click', async () => {
             const payload = {
                 face_auth_enabled: document.getElementById('face_auth').checked,
                 camera_flipped: document.getElementById('camera_flipped').checked,
-                tool_permissions: perms
+                cursor_sensitivity: parseFloat(document.getElementById('cursor_sensitivity').value),
+                selected_mic: document.getElementById('mic_select').value,
+                selected_speaker: document.getElementById('speaker_select').value,
+                selected_webcam: document.getElementById('webcam_select').value
             };
-
             const res = await fetch('/api/settings/data', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify(payload)
             });
-
             const msg = document.getElementById('status_msg');
             if(res.ok) {
                 msg.textContent = "Settings saved successfully!";
@@ -152,7 +213,32 @@
             }
         });
 
-        loadSettings();
+        document.getElementById('addVarBtn').addEventListener('click', () => addEnvRow('', ''));
+
+        document.getElementById('saveEnvBtn').addEventListener('click', async () => {
+            const rows = document.querySelectorAll('#env_vars_container > div');
+            const vars = [];
+            rows.forEach(row => {
+                const key = row.querySelector('.env-key').value.trim();
+                const value = row.querySelector('.env-value').value.trim();
+                if(key) vars.push({ key, value });
+            });
+            const res = await fetch('/api/env/data', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ vars: vars })
+            });
+            const msg = document.getElementById('status_msg');
+            if(res.ok) {
+                msg.textContent = ".env file saved! Restart Scarlett if you changed API keys.";
+                msg.classList.remove('hidden');
+                setTimeout(() => msg.classList.add('hidden'), 4000);
+            }
+        });
+
+        // Initialize
+        loadDevices().then(() => loadSettings());
+        loadEnv();
     </script>
 </body>
 </html>
