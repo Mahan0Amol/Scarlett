@@ -21,7 +21,7 @@ async def ui_music_play(sio, sid, data):
 
     await sio.emit(
         "music_state",
-        {**agent.current_metadata, "isPlaying": True},
+        agent.get_current_state(),
         room=sid
     )
 
@@ -44,7 +44,7 @@ async def ui_music_pause(sio, sid, data):
 
     await sio.emit(
         "music_state",
-        {**agent.current_metadata, "isPlaying": False},
+        agent.get_current_state(),
         room=sid
     )
 
