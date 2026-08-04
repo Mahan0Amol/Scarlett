@@ -104,7 +104,6 @@ import Scarlett
 from authenticator import FaceAuthenticator
 from plugins.smarthome import get_kasa_agent, get_smart_agent
 from plugins.cmd import get_agent as get_cmd_agent
-from plugins.music import get_agent as get_music_agent
 from plugins.printer import get_agent as get_printer_agent
 from plugins.chess import get_agent as get_chess_agent
 
@@ -153,7 +152,6 @@ authenticator = None
 # constructed here.
 smart_agent = get_smart_agent()
 cmd_agent = get_cmd_agent()
-music_agent = get_music_agent(sio=sio)
 SETTINGS_FILE = "settings.json"
 
 DEFAULT_SETTINGS = {
@@ -1107,121 +1105,6 @@ async def autocomplete_cmd(sid, data):
     
     if matches:
         await sio.emit('cmd_autocomplete', {'matches': matches}, room=sid)
-
-
-# ====================== MUSIC PLAYER ======================
-
-@sio.event
-async def open_music_window(sid, data):
-    print(f"[SERVER] AI requested to open music window: {data}")
-    
-    await sio.emit('open_music_window', room=sid)
-
-@sio.event
-async def music_play(sid):
-    global music_agent
-    if music_agent:
-        music_agent.unpause()
-        await sio.emit('music_state', {
-            **music_agent.current_metadata,
-            "isPlaying": True,
-        })
-
-
-@sio.event
-async def music_state_request(sid):
-    global music_agent
-
-    if music_agent:
-        await sio.emit(
-            "music_state",
-            music_agent.get_current_state(),
-            room=sid
-        )
-
-@sio.event
-async def music_pause(sid):
-    global music_agent
-    if music_agent:
-        music_agent.pause()
-        await sio.emit('music_state', {
-            **music_agent.current_metadata,
-            "isPlaying": False,
-        })
-
-
-@sio.event
-async def music_next(sid, data=None):
-    global music_agent
-
-    if music_agent:
-        music_agent.current_metadata = music_agent.next_track()
-
-        if music_agent.current_metadata:
-            await sio.emit(
-                "music_state",
-                music_agent.get_current_state()
-            )
-
-
-@sio.event
-async def music_prev(sid, data=None):
-    global music_agent
-
-    if music_agent:
-        music_agent.current_metadata = music_agent.prev_track()
-
-        if music_agent.current_metadata:
-            await sio.emit(
-                "music_state",
-                music_agent.get_current_state()
-            )
-
-
-@sio.event
-async def music_seek(sid, data):
-    global music_agent
-
-    if music_agent and data and 'position' in data:
-        music_agent.seek(int(data['position']))
-
-        await sio.emit(
-            "music_state",
-            music_agent.get_current_state()
-        )
-
-@sio.event
-async def music_volume(sid, data):
-    global music_agent
-
-    if music_agent and data and 'volume' in data:
-        music_agent.set_volume(int(data['volume']))
-
-        await sio.emit(
-            "music_state",
-            music_agent.get_current_state()
-        )
-
-
-@sio.event
-async def music_stop(sid, _=None):
-    global music_agent
-
-    if music_agent:
-        music_agent.stop()
-
-        await sio.emit(
-            "music_state",
-            {
-                "title": "No Track Selected",
-                "artist": "Unknown Artist",
-                "duration": 0,
-                "thumb": None,
-                "position": 0,
-                "isPlaying": False,
-                "volume": music_agent.player.audio_get_volume()
-            }
-        )
 
 
 # ====================== CHESS GAME ======================
