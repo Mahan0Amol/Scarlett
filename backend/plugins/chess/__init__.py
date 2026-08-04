@@ -76,3 +76,40 @@ async def play_chess_move(ctx, fc):
         await ctx.notify_model("System: Waiting for Sir to make his move on the board...")
         
     return result
+
+@tool(
+    name="set_chess_theme",
+    description="Dynamically changes the visual theme of the chess board and pieces by providing specific color codes.",
+    parameters={
+        "type": "OBJECT",
+        "properties": {
+            "dark_color": {
+                "type": "STRING", 
+                "description": "Hex color code for dark squares (e.g., '#8B4513')."
+            },
+            "light_color": {
+                "type": "STRING", 
+                "description": "Hex color code for light squares (e.g., '#F5DEB3')."
+            },
+            "glow_color": {
+                "type": "STRING", 
+                "description": "Optional hex color code for a neon glow effect around the pieces (e.g., '#00FFFF'). Set to 'none' for no glow."
+            }
+        },
+        "required": ["dark_color", "light_color"],
+    },
+)
+async def set_chess_theme(ctx, fc):
+    agent = get_agent()
+    agent.ctx = ctx
+    
+    dark = fc.args.get("dark_color")
+    light = fc.args.get("light_color")
+    glow = fc.args.get("glow_color", "none")
+    
+    success = agent.update_theme_colors(dark, light, glow)
+    
+    if success:
+        await agent.emit_state()
+        return f"Chess theme updated successfully with dark: {dark}, light: {light}, glow: {glow}."
+    return "Failed to update theme."

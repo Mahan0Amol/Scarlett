@@ -8,6 +8,11 @@ class ChessAgent:
         self.sid = None  # Set dynamically by @ui_action handlers
         self.board = chess.Board()
         self.game_active = False
+        self.theme = {
+            "dark": "#2c3e50",
+            "light": "#ecf0f1",
+            "glow": "none"
+        }
 
     def reset_game(self):
         self.board.reset()
@@ -20,17 +25,23 @@ class ChessAgent:
             "is_check": self.board.is_check(),
             "is_checkmate": self.board.is_checkmate(),
             "is_stalemate": self.board.is_stalemate(),
-            "is_game_over": self.board.is_game_over()
+            "is_game_over": self.board.is_game_over(),
+            "theme": self.theme # Include theme in state
         }
 
     async def emit_state(self):
         state = self.get_state()
-        # 1. Prefer fresh UI socket info if available (prevents stale ctx issue)
         if self.sio and self.sid:
             await self.sio.emit("plugin_update", {"plugin": "chess", "data": state}, room=self.sid)
-        # 2. Fallback to AI context if triggered by AI tool
         elif self.ctx:
             self.ctx.emit("plugin_update", {"plugin": "chess", "data": state})
+
+    def update_theme_colors(self, dark, light, glow="none"):
+        """Updates the board colors based on AI input."""
+        self.theme["dark"] = dark
+        self.theme["light"] = light
+        self.theme["glow"] = glow if glow and glow.lower() != "none" else "none"
+        return True
 
     async def start_game(self, fc):
         self.reset_game()

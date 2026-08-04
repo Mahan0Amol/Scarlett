@@ -14,8 +14,10 @@ const ChessWindow = ({
 }) => {
     const [game, setGame] = useState(new Chess());
     const [fen, setFen] = useState("start");
-    const [rightClickedSquares, setRightClickedSquares] = useState({});
     const [optionSquares, setOptionSquares] = useState({});
+
+    // Extract theme from data prop, fallback to defaults
+    const theme = data.theme || { dark: "#2c3e50", light: "#ecf0f1", glow: "none" };
 
     useEffect(() => {
         if (!socket) return;
@@ -27,10 +29,7 @@ const ChessWindow = ({
             }
         };
 
-        // Listen for generic plugin updates
         socket.on("plugin_update", handlePluginUpdate);
-        
-        // Request initial state using the generic plugin action
         socket.emit("plugin_action", { 
             plugin: "chess", 
             action: "chess_state_request", 
@@ -44,49 +43,47 @@ const ChessWindow = ({
 
     const onDrop = (sourceSquare, targetSquare, piece) => {
         setOptionSquares({});
-        
         try {
             const move = game.move({
                 from: sourceSquare,
                 to: targetSquare,
-                // Fix: Always default to Queen ('q') for promotion validity
-                promotion: piece[1].toLowerCase() === "p" ? "q" : undefined, 
+                promotion: piece[1].toLowerCase() === "p" ? "q" : undefined,
             });
 
-            if (move === null) return false; // Illegal move
+            if (move === null) return false;
 
             setFen(game.fen());
-            
-            // Send move to backend using the generic plugin action
             socket.emit("plugin_action", { 
                 plugin: "chess", 
                 action: "chess_user_move", 
                 payload: { move: move.from + move.to + (move.promotion || '') } 
             });
-            
             return true;
         } catch (e) {
             return false;
         }
     };
-    // Show possible moves on piece click
+
     const getMoveOptions = (square) => {
         const moves = game.moves({ square, verbose: true });
         if (moves.length === 0) {
             setOptionSquares({});
             return;
         }
-
         const newSquares = {};
         moves.map((move) => {
             newSquares[move.to] = {
-                background: 'rgba(255, 255, 0, 0.4)',
+                // If glow is set, use it for move highlights too!
+                background: theme.glow !== "none" ? `${theme.glow}44` : 'rgba(255, 255, 0, 0.4)',
                 borderRadius: '50%',
             };
             return move;
         });
         setOptionSquares(newSquares);
     };
+
+    // CSS filter for piece glow
+    const pieceFilter = theme.glow && theme.glow !== "none" ? `drop-shadow(0 0 5px ${theme.glow}) drop-shadow(0 0 8px ${theme.glow})` : 'none';
 
     return (
         <div
@@ -108,7 +105,7 @@ const ChessWindow = ({
                 onMouseDown={(e) => onMouseDown && onMouseDown(e, 'chess')}
                 className="h-8 flex items-center justify-between px-2 mb-2 border-b border-white/10 cursor-grab active:cursor-grabbing shrink-0"
             >
-                <span className="text-xs font-bold tracking-widest text-green-500/70 flex items-center gap-2">
+                <span className="text-xs font-bold tracking-widest text-green-500/70 flex items-center gap-2 uppercase">
                     <Gamepad2 size={14} /> CHESS MATCH
                 </span>
                 <button
@@ -119,16 +116,43 @@ const ChessWindow = ({
                 </button>
             </div>
 
-            {/* Board */}
+            {/* Board Container */}
             <div className="w-full aspect-square">
                 <Chessboard 
                     position={fen} 
                     onPieceDrop={onDrop} 
                     onSquareClick={getMoveOptions}
-                    customSquareStyles={{ ...optionSquares, ...rightClickedSquares }}
+                    customSquareStyles={{ ...optionSquares }}
                     boardOrientation="white"
-                    customDarkSquareStyle={{ backgroundColor: '#2c3e50' }}
-                    customLightSquareStyle={{ backgroundColor: '#ecf0f1' }}
+                    customDarkSquareStyle={{ backgroundColor: theme.dark, transition: 'background-color 0.5s' }}
+                    customLightSquareStyle={{ backgroundColor: theme.light, transition: 'background-color 0.5s' }}
+                    customPieces={(piece) => (
+                        <div
+                            style={{
+                                width: '100%',
+                                height: '100%',
+                                display: 'flex',
+                                justifyContent: 'center',
+                                alignItems: 'center',
+                                fontSize: '40px',
+                                filter: pieceFilter,
+                                transition: 'filter 0.5s'
+                            }}
+                        >
+                            {piece === 'wP' && '♙'}
+                            {piece === 'wN' && '♘'}
+                            {piece === 'wB' && '♗'}
+                            {piece === 'wR' && '♖'}
+                            {piece === 'wQ' && '♕'}
+                            {piece === 'wK' && '♔'}
+                            {piece === 'bP' && '♟'}
+                            {piece === 'bN' && '♞'}
+                            {piece === 'bB' && '♝'}
+                            {piece === 'bR' && '♜'}
+                            {piece === 'bQ' && '♛'}
+                            {piece === 'bK' && '♚'}
+                        </div>
+                    )}
                 />
             </div>
         </div>
