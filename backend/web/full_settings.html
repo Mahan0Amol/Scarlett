@@ -61,6 +61,41 @@
             </div>
         </div>
 
+        <!-- Personal Info Card -->
+        <div class="glass rounded-2xl p-6 mb-6 shadow-xl">
+            <h2 class="text-sm font-bold text-gray-400 tracking-widest mb-4 uppercase">Personal Info</h2>
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="text-xs text-gray-500 uppercase tracking-wider">Your Name</label>
+                    <input type="text" id="pi_user_name" class="w-full bg-black/40 border border-white/10 rounded-lg p-2 text-sm text-red-300 mono neon-border mt-1" placeholder="John Doe">
+                </div>
+                <div>
+                    <label class="text-xs text-gray-500 uppercase tracking-wider">What do you want to be called</label>
+                    <input type="text" id="pi_user_known_as" class="w-full bg-black/40 border border-white/10 rounded-lg p-2 text-sm text-red-300 mono neon-border mt-1" placeholder="Sir">
+                </div>
+                <div>
+                    <label class="text-xs text-gray-500 uppercase tracking-wider">Your computer's OS</label>
+                    <input type="text" id="pi_os" class="w-full bg-black/40 border border-white/10 rounded-lg p-2 text-sm text-red-300 mono neon-border mt-1" placeholder="Windows 11">
+                </div>
+                <div>
+                    <label class="text-xs text-gray-500 uppercase tracking-wider">AI Name</label>
+                    <input type="text" id="pi_agent_name" class="w-full bg-black/40 border border-white/10 rounded-lg p-2 text-sm text-red-300 mono neon-border mt-1" placeholder="Scarlett">
+                </div>
+                <div class="col-span-2">
+                    <label class="text-xs text-gray-500 uppercase tracking-wider">AI Voice</label>
+                    <select id="pi_voice" class="w-full bg-black/40 border border-white/10 rounded-lg p-2 text-sm text-red-300 mono neon-border mt-1">
+                        <option value="Kore">Kore</option>
+                        <option value="Puck">Puck</option>
+                        <option value="Charon">Charon</option>
+                        <option value="Fenrir">Fenrir</option>
+                        <option value="Leda">Leda</option>
+                        <option value="Orus">Orus</option>
+                        <option value="Aoede">Aoede</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
         <!-- General Settings Card -->
         <div class="glass rounded-2xl p-6 mb-6 shadow-xl">
             <h2 class="text-sm font-bold text-gray-400 tracking-widest mb-4 uppercase">General Configuration</h2>
@@ -114,6 +149,9 @@
     </div>
 
     <script>
+        // Keys managed by the Personal Info form
+        const personalInfoKeys = ["USER_NAME", "USER_KNOWN_AS", "OS", "VOICE", "AGENT_NAME"];
+
         document.querySelectorAll('.toggle-checkbox').forEach(cb => {
             cb.addEventListener('change', () => {
                 const dot = cb.parentElement.querySelector('.toggle-dot');
@@ -122,21 +160,17 @@
             });
         });
 
-        // Load Devices using Web API
         async function loadDevices() {
             try {
-                // Request permission to get labels
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
                 stream.getTracks().forEach(track => track.stop());
-                
                 const devices = await navigator.mediaDevices.enumerateDevices();
                 const micSel = document.getElementById('mic_select');
                 const spkSel = document.getElementById('speaker_select');
                 const camSel = document.getElementById('webcam_select');
-                
                 devices.forEach(d => {
                     const opt = document.createElement('option');
-                    opt.value = d.label; // Save label instead of ID
+                    opt.value = d.label;
                     opt.text = d.label || `Unknown ${d.kind}`;
                     if (d.kind === 'audioinput') micSel.appendChild(opt.cloneNode(true));
                     if (d.kind === 'audiooutput') spkSel.appendChild(opt.cloneNode(true));
@@ -150,15 +184,12 @@
             const data = await res.json();
             document.getElementById('face_auth').checked = data.face_auth_enabled;
             document.getElementById('camera_flipped').checked = data.camera_flipped;
-            
             const sens = data.cursor_sensitivity || 2.0;
             document.getElementById('cursor_sensitivity').value = sens;
             document.getElementById('sensitivity_val').textContent = `${sens}x`;
-
             if(data.selected_mic) document.getElementById('mic_select').value = data.selected_mic;
             if(data.selected_speaker) document.getElementById('speaker_select').value = data.selected_speaker;
             if(data.selected_webcam) document.getElementById('webcam_select').value = data.selected_webcam;
-
             document.querySelectorAll('.toggle-checkbox').forEach(cb => {
                 if(cb.checked) cb.parentElement.querySelector('.toggle-dot').style.transform = 'translateX(24px)';
             });
@@ -169,9 +200,27 @@
             const data = await res.json();
             const container = document.getElementById('env_vars_container');
             container.innerHTML = '';
+            
             if (data.vars && data.vars.length > 0) {
-                data.vars.forEach(v => addEnvRow(v.key, v.value));
-            } else { addEnvRow('', ''); }
+                // Populate Personal Info fields
+                data.vars.forEach(v => {
+                    if (v.key === "USER_NAME") document.getElementById('pi_user_name').value = v.value;
+                    if (v.key === "USER_KNOWN_AS") document.getElementById('pi_user_known_as').value = v.value;
+                    if (v.key === "OS") document.getElementById('pi_os').value = v.value;
+                    if (v.key === "AGENT_NAME") document.getElementById('pi_agent_name').value = v.value;
+                    if (v.key === "VOICE") document.getElementById('pi_voice').value = v.value;
+                });
+
+                // Filter out personal info keys from the generic table
+                const visibleVars = data.vars.filter(v => !personalInfoKeys.includes(v.key));
+                if (visibleVars.length > 0) {
+                    visibleVars.forEach(v => addEnvRow(v.key, v.value));
+                } else {
+                    addEnvRow('', '');
+                }
+            } else { 
+                addEnvRow('', ''); 
+            }
         }
 
         function addEnvRow(key, value) {
@@ -218,11 +267,21 @@
         document.getElementById('saveEnvBtn').addEventListener('click', async () => {
             const rows = document.querySelectorAll('#env_vars_container > div');
             const vars = [];
+            
+            // Collect generic rows
             rows.forEach(row => {
                 const key = row.querySelector('.env-key').value.trim();
                 const value = row.querySelector('.env-value').value.trim();
                 if(key) vars.push({ key, value });
             });
+
+            // Collect Personal Info fields
+            vars.push({ key: "USER_NAME", value: document.getElementById('pi_user_name').value.trim() });
+            vars.push({ key: "USER_KNOWN_AS", value: document.getElementById('pi_user_known_as').value.trim() });
+            vars.push({ key: "OS", value: document.getElementById('pi_os').value.trim() });
+            vars.push({ key: "AGENT_NAME", value: document.getElementById('pi_agent_name').value.trim() });
+            vars.push({ key: "VOICE", value: document.getElementById('pi_voice').value.trim() });
+
             const res = await fetch('/api/env/data', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
