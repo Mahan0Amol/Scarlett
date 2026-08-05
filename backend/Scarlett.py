@@ -25,10 +25,10 @@ from core.video_io import VideoIOMixin
 MODEL = "models/gemini-2.5-flash-native-audio-preview-12-2025"
 DEFAULT_MODE = "camera"
 
-NAME = "Mahan"
-
 load_dotenv()
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+NAME = os.getenv("USER_NAME")
+
 
 # --- Tool schemas & handlers are defined as plugins in backend/plugins/. ---
 # Adding a new tool = adding a folder there; nothing here needs to change.
