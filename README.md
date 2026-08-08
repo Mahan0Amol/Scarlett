@@ -320,7 +320,7 @@ Scarlett/
     └── plugins/
         └── email/
             ├── credentials.json
-            └── ...
+            └── other files
 ```
 
 ### 7. Start Scarlett
