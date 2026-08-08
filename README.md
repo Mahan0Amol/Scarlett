@@ -118,7 +118,7 @@ Key runtime pieces beyond React itself: `socket.io-client` (backend connection),
 
 ### Environment variables
 
-Create `backend/.env`:
+Go to full settings window and add these from .env section
 
 | Variable | Purpose |
 |---|---|
