@@ -125,14 +125,12 @@ Create `backend/.env`:
 |---|---|
 | `GEMINI_API_KEY` | Google Gemini API key (Live API access) |
 | `OPENWEATHER_API_KEY` | Weather lookups |
-| `EMAIL_ADDRESS` / `EMAIL_APP_PASSWORD` | SMTP sending account (use an app password, not your real password) |
+| `EMAIL_ADDRESS` | SMTP sending account (use an app password, not your real password) |
 | `EMAIL_IMAP` / `EMAIL_IMAP_PORT` | IMAP server for reading mail |
 | `MUSIC_FOLDER_PATH` | Root folder the music plugin searches |
 | `USER_NAME` | Your real name (used in the system prompt) |
 | `USER_KNOWN_AS` | What Scarlett calls you ("sir", your name, a nickname, ...) |
 | `OS` | Target OS string, used by a couple of platform-specific tools |
-| `AGENT_NAME` | Overrides the assistant's spoken name if you don't want "Scarlett" |
-| `VOICE` | Gemini prebuilt voice name |
 
 `backend/settings.json` holds everything that changes at runtime through the Settings UI instead of `.env`: face-auth toggle, per-tool enable/disable (`tool_permissions`), known printers/Kasa devices/door locks, selected mic/speaker/webcam, and cursor sensitivity for the hand-tracking cursor. It's created with sane defaults on first run if missing.
 
