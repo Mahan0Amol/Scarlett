@@ -38,9 +38,25 @@ class ToolDispatcher:
                 id=fc.id, name=fc.name, response={"result": f"Unknown tool '{fc.name}'."}
             )
 
-        confirmation_required = self.ctx.permissions.get(fc.name, spec.requires_confirmation)
+        # `ctx.permissions` (from settings.json / the Settings UI) is an
+        # enable/disable gate - True (or unset) means the tool is allowed to
+        # run at all, False means it's fully blocked. This is a separate
+        # concept from `spec.requires_confirmation`, which is a per-tool
+        # decision made by the plugin author about whether an *allowed* tool
+        # should still pop up an "are you sure?" prompt before running (e.g.
+        # for destructive actions). These two used to be the same flag,
+        # which meant toggling a tool "off" in Settings actually made it
+        # skip confirmation and run silently - the opposite of what the
+        # toggle implied.
+        enabled = self.ctx.permissions.get(fc.name, True)
+        if not enabled:
+            print(f"[TOOL] '{fc.name}' is disabled in settings.")
+            return types.FunctionResponse(
+                id=fc.id, name=fc.name,
+                response={"result": f"The '{fc.name}' tool is currently disabled in settings."},
+            )
 
-        if confirmation_required:
+        if spec.requires_confirmation:
             confirmed = await self._request_confirmation(fc.name, fc.args)
             if not confirmed:
                 print(f"[TOOL] '{fc.name}' denied by user.")

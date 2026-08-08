@@ -1,23 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, ExternalLink } from 'lucide-react';
 
-const TOOLS = [
-    { id: 'generate_cad', label: 'Generate CAD' },
-    { id: 'run_web_agent', label: 'Web Agent' },
-    { id: 'create_directory', label: 'Create Folder' },
-    { id: 'write_file', label: 'Write File' },
-    { id: 'read_directory', label: 'Read Directory' },
-    { id: 'read_file', label: 'Read File' },
-    { id: 'create_project', label: 'Create Project' },
-    { id: 'switch_project', label: 'Switch Project' },
-    { id: 'list_projects', label: 'List Projects' },
-    { id: 'list_smart_devices', label: 'List Devices' },
-    { id: 'control_light', label: 'Control Light' },
-    { id: 'discover_printers', label: 'Discover Printers' },
-    { id: 'print_stl', label: 'Print 3D Model' },
-    { id: 'iterate_cad', label: 'Iterate CAD' },
-];
-
 const SettingsWindow = ({
     socket,
     micDevices,
@@ -38,6 +21,17 @@ const SettingsWindow = ({
 }) => {
     const [permissions, setPermissions] = useState({});
     const [faceAuthEnabled, setFaceAuthEnabled] = useState(false);
+    const [tools, setTools] = useState([]);
+
+    useEffect(() => {
+        // Fetched fresh from the backend's live plugin registry, so any
+        // installed plugin's tools show up automatically - nothing here
+        // needs to be hardcoded or updated when a plugin is added/removed.
+        fetch('http://localhost:8000/api/tools/list')
+            .then(res => res.json())
+            .then(setTools)
+            .catch(err => console.error('Failed to load tools list:', err));
+    }, []);
 
     useEffect(() => {
         socket.emit('get_settings');
@@ -188,6 +182,42 @@ const SettingsWindow = ({
                             className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform duration-200 ${isCameraFlipped ? 'translate-x-4' : 'translate-x-0'}`}
                         />
                     </button>
+                </div>
+            </div>
+
+            {/* Tool Permissions Section */}
+            <div className="mb-6">
+                <h3 className="text-red-400 font-bold mb-2 text-xs uppercase tracking-wider opacity-80">
+                    Tool Permissions ({tools.length})
+                </h3>
+                <div className="flex flex-col gap-1.5 max-h-48 overflow-y-auto pr-1">
+                    {tools.length === 0 && (
+                        <p className="text-[10px] text-gray-500 italic">Loading tools...</p>
+                    )}
+                    {tools.map((tool) => {
+                        const enabled = permissions[tool.name] !== false; // default: allowed
+                        const label = tool.name
+                            .split('_')
+                            .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+                            .join(' ');
+                        return (
+                            <div
+                                key={tool.name}
+                                title={tool.description}
+                                className="flex items-center justify-between text-xs bg-gray-900/50 p-2 rounded border border-red-900/30"
+                            >
+                                <span className="text-red-100/80 truncate pr-2">{label}</span>
+                                <button
+                                    onClick={() => togglePermission(tool.name)}
+                                    className={`relative w-8 h-4 rounded-full transition-colors duration-200 shrink-0 ${enabled ? 'bg-red-500/80' : 'bg-gray-700'}`}
+                                >
+                                    <div
+                                        className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform duration-200 ${enabled ? 'translate-x-4' : 'translate-x-0'}`}
+                                    />
+                                </button>
+                            </div>
+                        );
+                    })}
                 </div>
             </div>
 

@@ -145,6 +145,61 @@
             <button id="saveEnvBtn" class="mt-6 w-full bg-gray-700 hover:bg-gray-600 text-white font-bold py-3 px-6 rounded-lg transition-all">Save .env File</button>
         </div>
 
+        <!-- Plugin Manager Card -->
+        <div class="glass rounded-2xl p-6 mb-6 shadow-xl">
+            <div class="flex justify-between items-center mb-4">
+                <div>
+                    <h2 class="text-sm font-bold text-gray-400 tracking-widest uppercase">Plugin Manager</h2>
+                    <p class="text-xs text-gray-500 mt-1">Install a .splugin package, or browse what's already installed.</p>
+                </div>
+            </div>
+
+            <!-- Installed plugins list -->
+            <div id="installed_plugins_container" class="space-y-2 mb-4"></div>
+
+            <!-- Upload / drop zone -->
+            <div id="plugin_dropzone" class="border-2 border-dashed border-red-500/30 rounded-xl p-6 text-center cursor-pointer hover:border-red-500/60 hover:bg-red-500/5 transition-all">
+                <p class="text-sm text-gray-400">Drag & drop a <span class="mono text-red-400">.splugin</span> file here, or click to browse</p>
+                <input type="file" id="plugin_file_input" accept=".splugin" class="hidden">
+            </div>
+
+            <!-- Confirmation panel (hidden until a file is inspected) -->
+            <div id="plugin_confirm_panel" class="hidden mt-4 bg-black/40 border border-red-500/30 rounded-xl p-4">
+                <h3 id="plugin_confirm_title" class="text-red-400 font-bold text-sm mb-1"></h3>
+                <p id="plugin_confirm_desc" class="text-xs text-gray-400 mb-3"></p>
+
+                <div id="plugin_already_installed_warning" class="hidden mb-3 text-xs text-yellow-400 bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-2">
+                    ⚠ This plugin is already installed. Installing again will overwrite it.
+                </div>
+
+                <div class="grid grid-cols-1 gap-2 text-xs mb-3">
+                    <div>
+                        <span class="text-gray-500 uppercase tracking-wider">Python dependencies:</span>
+                        <span id="plugin_py_deps" class="mono text-gray-300 ml-1"></span>
+                    </div>
+                    <div>
+                        <span class="text-gray-500 uppercase tracking-wider">npm dependencies:</span>
+                        <span id="plugin_npm_deps" class="mono text-gray-300 ml-1"></span>
+                    </div>
+                    <div>
+                        <span class="text-gray-500 uppercase tracking-wider">Permissions requested:</span>
+                        <span id="plugin_permissions" class="mono text-gray-300 ml-1"></span>
+                    </div>
+                </div>
+
+                <div class="flex gap-2">
+                    <button id="plugin_confirm_install_btn" class="flex-1 bg-red-600 hover:bg-red-500 text-white font-bold py-2 px-4 rounded-lg transition-all text-sm">
+                        Confirm & Install
+                    </button>
+                    <button id="plugin_cancel_btn" class="bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg transition-all text-sm">
+                        Cancel
+                    </button>
+                </div>
+
+                <p id="plugin_install_progress" class="hidden text-xs text-gray-400 mt-3 mono animate-pulse">Installing dependencies - this can take a minute...</p>
+            </div>
+        </div>
+
         <div id="status_msg" class="hidden text-center text-green-400 mono text-sm mt-4 animate-pulse"></div>
     </div>
 
@@ -294,6 +349,166 @@
                 setTimeout(() => msg.classList.add('hidden'), 4000);
             }
         });
+
+        // ============== Plugin Manager ==============
+        let stagedPluginToken = null;
+
+        async function loadInstalledPlugins() {
+            const res = await fetch('/api/plugins/list');
+            const plugins = await res.json();
+            const container = document.getElementById('installed_plugins_container');
+            container.innerHTML = '';
+
+            if (plugins.length === 0) {
+                container.innerHTML = '<p class="text-xs text-gray-500 italic">No plugins installed yet.</p>';
+                return;
+            }
+
+            plugins.forEach(p => {
+                const row = document.createElement('div');
+                row.className = 'flex items-center justify-between bg-black/40 border border-white/10 rounded-lg p-3 text-sm';
+                row.innerHTML = `
+                    <div>
+                        <span class="text-red-300 font-bold">${p.name}</span>
+                        <span class="text-gray-500 mono text-xs ml-2">v${p.version}</span>
+                        <p class="text-xs text-gray-500 mt-0.5">${p.description || ''}</p>
+                    </div>
+                    <button class="uninstall_plugin_btn bg-transparent hover:bg-red-500/20 text-red-400 border border-red-500/40 font-bold py-1.5 px-3 rounded-lg transition-all text-xs" data-plugin-id="${p.id}" data-plugin-name="${p.name}">
+                        Uninstall
+                    </button>
+                `;
+                container.appendChild(row);
+            });
+        }
+
+        document.getElementById('installed_plugins_container').addEventListener('click', async (e) => {
+            const btn = e.target.closest('.uninstall_plugin_btn');
+            if (!btn) return;
+
+            const pluginId = btn.dataset.pluginId;
+            const pluginName = btn.dataset.pluginName;
+
+            const confirmed = confirm(
+                `Uninstall "${pluginName}"?\n\nThis deletes its backend files, its tools, and its UI window. This cannot be undone.`
+            );
+            if (!confirmed) return;
+
+
+            btn.disabled = true;
+            btn.textContent = 'Removing...';
+
+            const res = await fetch('/api/plugins/uninstall', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ plugin_id: pluginId, remove_dependencies: false })
+            });
+            const result = await res.json();
+
+            const msg = document.getElementById('status_msg');
+            if (res.ok) {
+                msg.textContent = `Uninstalled ${result.name}. Restart the backend to unload its tools.`;
+                loadInstalledPlugins();
+            } else {
+                msg.textContent = 'Uninstall failed: ' + (result.error || 'unknown error');
+                btn.disabled = false;
+                btn.textContent = 'Uninstall';
+            }
+            msg.classList.remove('hidden');
+            setTimeout(() => msg.classList.add('hidden'), 6000);
+        });
+
+        function resetPluginConfirmPanel() {
+            stagedPluginToken = null;
+            document.getElementById('plugin_confirm_panel').classList.add('hidden');
+            document.getElementById('plugin_install_progress').classList.add('hidden');
+            document.getElementById('plugin_confirm_install_btn').disabled = false;
+            document.getElementById('plugin_file_input').value = '';
+        }
+
+        async function inspectPluginFile(file) {
+            const formData = new FormData();
+            formData.append('file', file);
+
+            const res = await fetch('/api/plugins/inspect', { method: 'POST', body: formData });
+            const info = await res.json();
+
+            if (!res.ok) {
+                alert('Could not read plugin: ' + (info.error || 'unknown error'));
+                return;
+            }
+
+            stagedPluginToken = info.token;
+            const m = info.manifest;
+
+            document.getElementById('plugin_confirm_title').textContent = `${m.name} v${m.version}`;
+            document.getElementById('plugin_confirm_desc').textContent = m.description || '';
+            document.getElementById('plugin_already_installed_warning').classList.toggle('hidden', !info.already_installed);
+            document.getElementById('plugin_py_deps').textContent =
+                (info.python_dependencies && info.python_dependencies.length) ? info.python_dependencies.join(', ') : 'none';
+            document.getElementById('plugin_npm_deps').textContent =
+                (info.npm_dependencies && Object.keys(info.npm_dependencies).length)
+                    ? Object.entries(info.npm_dependencies).map(([k, v]) => `${k}@${v}`).join(', ')
+                    : 'none';
+            document.getElementById('plugin_permissions').textContent =
+                (info.permissions && info.permissions.length) ? info.permissions.join(', ') : 'none';
+
+            document.getElementById('plugin_confirm_panel').classList.remove('hidden');
+        }
+
+        const dropzone = document.getElementById('plugin_dropzone');
+        const fileInput = document.getElementById('plugin_file_input');
+
+        dropzone.addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files[0]) inspectPluginFile(e.target.files[0]);
+        });
+
+        dropzone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropzone.classList.add('border-red-500', 'bg-red-500/10');
+        });
+        dropzone.addEventListener('dragleave', () => {
+            dropzone.classList.remove('border-red-500', 'bg-red-500/10');
+        });
+        dropzone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropzone.classList.remove('border-red-500', 'bg-red-500/10');
+            const file = e.dataTransfer.files[0];
+            if (file) inspectPluginFile(file);
+        });
+
+        document.getElementById('plugin_cancel_btn').addEventListener('click', resetPluginConfirmPanel);
+
+        document.getElementById('plugin_confirm_install_btn').addEventListener('click', async () => {
+            if (!stagedPluginToken) return;
+
+            const btn = document.getElementById('plugin_confirm_install_btn');
+            btn.disabled = true;
+            document.getElementById('plugin_install_progress').classList.remove('hidden');
+
+            const overwrite = !document.getElementById('plugin_already_installed_warning').classList.contains('hidden');
+
+            const res = await fetch('/api/plugins/install', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token: stagedPluginToken, overwrite })
+            });
+            const result = await res.json();
+
+            resetPluginConfirmPanel();
+
+            const msg = document.getElementById('status_msg');
+            if (res.ok) {
+                msg.textContent = `Installed ${result.name} v${result.version}. Restart the backend to load it.`;
+                loadInstalledPlugins();
+            } else {
+                msg.textContent = 'Install failed: ' + (result.error || 'unknown error');
+            }
+            msg.classList.remove('hidden');
+            setTimeout(() => msg.classList.add('hidden'), 6000);
+        });
+
+        loadInstalledPlugins();
 
         // Initialize
         loadDevices().then(() => loadSettings());

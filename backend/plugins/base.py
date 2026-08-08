@@ -33,7 +33,7 @@ class ToolSpec:
     parameters: Dict[str, Any]
     handler: Callable
     behavior: Optional[str] = None          # e.g. "NON_BLOCKING", passed straight to Gemini
-    requires_confirmation: bool = True       # default fallback if not overridden in settings.json
+    requires_confirmation: bool = False      # opt-in per tool; set True for destructive/sensitive actions
 
 
 class ToolRegistry:
@@ -46,7 +46,7 @@ class ToolRegistry:
         description: str,
         parameters: Dict[str, Any],
         behavior: Optional[str] = None,
-        requires_confirmation: bool = True,
+        requires_confirmation: bool = False,
     ):
         def decorator(func: Callable):
             if name in self._tools:

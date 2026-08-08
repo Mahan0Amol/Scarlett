@@ -17,12 +17,13 @@ import aiohttp
 import requests
 import socketio
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, UploadFile, File
 import asyncio
 import threading
 import sys
 import os
 import json
+import shutil
 from datetime import datetime
 from pathlib import Path
 
@@ -1106,6 +1107,119 @@ async def get_full_settings_page():
     return HTMLResponse(content="<h1>Settings file not found!</h1>", status_code=404)
 
 # --- General Settings API ---
+
+@app.get("/api/tools/list")
+async def get_tools_list():
+    """Every tool currently registered by the plugin system (built-in and
+    installed plugins alike) - so any settings UI can list them without a
+    hardcoded name list that goes stale as plugins are added/removed."""
+    declarations = Scarlett.tools[1]["function_declarations"]
+    return [{"name": d["name"], "description": d.get("description", "")} for d in declarations]
+
+
+# --- Plugin Manager (import/export) ---
+import tempfile
+import uuid
+from plugin_tools.importer import inspect_plugin, install_plugin, uninstall_plugin, PluginImportError
+
+_staged_plugin_uploads = {}  # token -> Path, cleared once installed or rejected
+
+
+@app.post("/api/plugins/inspect")
+async def inspect_uploaded_plugin(file: UploadFile = File(...)):
+    """Step 1: stage the uploaded .splugin and return its manifest info
+    (dependencies, permissions, already-installed) WITHOUT installing
+    anything. The frontend shows this to the user before they confirm."""
+    staged_path = Path(tempfile.gettempdir()) / f"staged_{uuid.uuid4().hex}.splugin"
+    with open(staged_path, "wb") as f:
+        shutil.copyfileobj(file.file, f)
+
+    try:
+        info = await asyncio.to_thread(inspect_plugin, staged_path)
+    except PluginImportError as e:
+        staged_path.unlink(missing_ok=True)
+        return JSONResponse(status_code=400, content={"error": str(e)})
+
+    token = staged_path.stem
+    _staged_plugin_uploads[token] = staged_path
+    return {"token": token, **info}
+
+
+@app.post("/api/plugins/install")
+async def install_staged_plugin(data: dict):
+    """Step 2: only called after the user has seen the inspect info and
+    explicitly confirmed. Installs deps via pip/npm, which can take a
+    while - run off the event loop so it doesn't freeze the whole server."""
+    token = data.get("token")
+    overwrite = bool(data.get("overwrite", False))
+
+    staged_path = _staged_plugin_uploads.get(token)
+    if not staged_path or not staged_path.exists():
+        return JSONResponse(status_code=400, content={"error": "Upload expired or not found. Please re-upload the file."})
+
+    try:
+        result = await asyncio.to_thread(
+            install_plugin, staged_path, confirmed=True, overwrite=overwrite, install_deps=True
+        )
+    except PluginImportError as e:
+        return JSONResponse(status_code=400, content={"error": str(e)})
+    finally:
+        staged_path.unlink(missing_ok=True)
+        _staged_plugin_uploads.pop(token, None)
+
+    return {
+        "status": "success",
+        "plugin_id": result["plugin_id"],
+        "name": result["manifest"]["name"],
+        "version": result["manifest"]["version"],
+    }
+
+@app.post("/api/plugins/uninstall")
+async def uninstall_installed_plugin(data: dict):
+    """Removes a manifest-based plugin entirely (files + tools + UI entry).
+    Requires a backend restart afterwards for the tool registry (which is
+    built once at import time) to actually forget the plugin's tools."""
+    plugin_id = data.get("plugin_id")
+    remove_dependencies = False
+
+    if not plugin_id:
+        return JSONResponse(status_code=400, content={"error": "plugin_id is required."})
+
+    try:
+        result = await asyncio.to_thread(uninstall_plugin, plugin_id, remove_dependencies=remove_dependencies)
+    except PluginImportError as e:
+        return JSONResponse(status_code=400, content={"error": str(e)})
+
+    return {
+        "status": "success",
+        "plugin_id": result["plugin_id"],
+        "name": result["manifest"]["name"],
+        "removed_dependencies": result["removed_dependencies"],
+    }
+
+@app.get("/api/plugins/list")
+async def list_installed_plugins():
+    """Every plugin currently installed under backend/plugins/ that has a
+    plugin.json (built-in plugins that predate the manifest format just
+    won't show up here, which is fine - this is for the Plugin Manager UI)."""
+    plugins_dir = Path(__file__).parent / "plugins"
+    results = []
+    for entry in sorted(plugins_dir.iterdir()):
+        manifest_path = entry / "plugin.json"
+        if manifest_path.exists():
+            try:
+                with open(manifest_path, "r", encoding="utf-8") as f:
+                    manifest = json.load(f)
+                results.append({
+                    "id": manifest.get("id", entry.name),
+                    "name": manifest.get("name", entry.name),
+                    "version": manifest.get("version", "?"),
+                    "description": manifest.get("description", ""),
+                })
+            except Exception:
+                continue
+    return results
+
 
 @app.get("/api/settings/data")
 async def get_settings_data():

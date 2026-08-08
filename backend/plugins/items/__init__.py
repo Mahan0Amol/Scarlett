@@ -131,6 +131,7 @@ async def update_item(ctx, fc):
         },
         "required": ["category_name", "item_name"],
     },
+    requires_confirmation=True,
 )
 async def remove_item(ctx, fc):
     return await _delegate(ctx, fc)

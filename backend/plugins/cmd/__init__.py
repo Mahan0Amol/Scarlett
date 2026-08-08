@@ -29,6 +29,7 @@ get_agent = lazy_singleton(lambda: CmdAgent())
         },
         "required": ["command"],
     },
+    requires_confirmation=True,
 )
 async def run_cmd(ctx, fc):
     command = fc.args["command"]

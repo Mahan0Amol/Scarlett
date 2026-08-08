@@ -1,0 +1,24 @@
+{
+    "id": "chess",
+    "name": "Chess Match",
+    "version": "1.0.0",
+    "description": "Play a full chess game against Scarlett on an interactive board.",
+    "author": "Scarlett",
+    "frontend": [
+        {
+            "component": "ChessWindow",
+            "file": "ChessWindow.jsx",
+            "ui_id": "chess"
+        }
+    ],
+    "python_dependencies": [
+        "chess"
+    ],
+    "npm_dependencies": {
+        "react-chessboard": "^4.0.0",
+        "chess.js": "^1.0.0"
+    },
+    "permissions": [
+        "ui_window"
+    ]
+}

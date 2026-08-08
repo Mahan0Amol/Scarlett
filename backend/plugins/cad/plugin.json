@@ -1,0 +1,26 @@
+{
+    "id": "cad",
+    "name": "CAD Generator",
+    "version": "1.0.0",
+    "description": "Generates and iterates 3D CAD models from natural language prompts.",
+    "author": "Scarlett",
+    "frontend": [
+        {
+            "component": "CadWindow",
+            "file": "CadWindow.jsx",
+            "ui_id": "cad"
+        }
+    ],
+    "python_dependencies": [
+        "google-genai",
+        "python-dotenv",
+        "pydantic",
+        "build123d"
+    ],
+    "npm_dependencies": {},
+    "permissions": [
+        "ui_window",
+        "network",
+        "filesystem_write"
+    ]
+}

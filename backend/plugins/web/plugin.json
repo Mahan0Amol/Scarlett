@@ -1,0 +1,24 @@
+{
+    "id": "web",
+    "name": "Web Agent",
+    "version": "1.0.0",
+    "description": "Browses the web autonomously to complete tasks, streaming a live view to the UI.",
+    "author": "Scarlett",
+    "frontend": [
+        {
+            "component": "BrowserWindow",
+            "file": "BrowserWindow.jsx",
+            "ui_id": "browser"
+        }
+    ],
+    "python_dependencies": [
+        "playwright",
+        "google-genai",
+        "python-dotenv"
+    ],
+    "npm_dependencies": {},
+    "permissions": [
+        "ui_window",
+        "network"
+    ]
+}

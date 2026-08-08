@@ -129,6 +129,7 @@ async def control_light(ctx, fc):
         },
         "required": ["target", "action"],
     },
+    requires_confirmation=True,
 )
 async def control_door(ctx, fc):
     target = fc.args["target"]

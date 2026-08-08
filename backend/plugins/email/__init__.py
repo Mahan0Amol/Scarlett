@@ -23,6 +23,7 @@ def _get_agent(ctx):
         },
         "required": ["recipient", "subject", "body"],
     },
+    requires_confirmation=True,
 )
 async def send_email(ctx, fc):
     recipient = fc.args["recipient"]
@@ -74,6 +75,7 @@ async def read_inbox(ctx, fc):
         },
         "required": ["message_id"],
     },
+    requires_confirmation=True,
 )
 async def delete_email(ctx, fc):
     message_id = fc.args["message_id"]

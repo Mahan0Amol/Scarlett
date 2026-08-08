@@ -32,6 +32,7 @@ async def discover_printers(ctx, fc):
         },
         "required": ["stl_path", "printer"],
     },
+    requires_confirmation=True,
 )
 async def print_stl(ctx, fc):
     stl_path = fc.args["stl_path"]

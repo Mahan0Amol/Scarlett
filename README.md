@@ -1,437 +1,226 @@
-# A.D.A V2 - Advanced Design Assistant
+# Scarlett
 
-![Python](https://img.shields.io/badge/Python-3.10%20%7C%203.11-blue?logo=python)
-![React](https://img.shields.io/badge/React-18.2-61DAFB?logo=react)
-![Electron](https://img.shields.io/badge/Electron-28-47848F?logo=electron)
-![Gemini](https://img.shields.io/badge/Google%20Gemini-Native%20Audio-4285F4?logo=google)
-![License](https://img.shields.io/badge/License-MIT-green)
+**S**mart **C**onversational **A**ssistant for **R**eal-time **L**earning, **E**xecution & **T**ask **T**racking
 
-> **A.D.A** = **A**dvanced **D**esign **A**ssistant
+A personal, Jarvis-style voice assistant with a real-time avatar UI, a live video feed, and a plugin system that lets it actually *do* things on your computer and around your home — not just talk about them.
 
-Scarlett V2 is a sophisticated AI assistant designed for multimodal interaction. It combines Google's Gemini 2.5 Native Audio with computer vision, gesture control, and 3D CAD generation in a Electron desktop application.
+Scarlett runs as a small **Electron desktop app** (React frontend) talking to a **Python backend** that streams your mic and webcam to **Google's Gemini Live API** and gets a natural, interruptible voice conversation back — with full function-calling access to a growing set of tools.
 
----
+> ⚠️ **This is a personal project, published as-is.** It's built around one person's setup (their PC, their printer, their smart home devices). See [Before You Publish / Run This Yourself](#before-you-run-this-yourself) for what you'll need to change.
 
-## 🌟 Capabilities at a Glance
-
-| Feature | Description | Technology |
-|---------|-------------|------------|
-| **🗣️ Low-Latency Voice** | Real-time conversation with interrupt handling | Gemini 2.5 Native Audio |
-| **🧊 Parametric CAD** | Editable 3D model generation from voice prompts | `build123d` → STL |
-| **🖨️ 3D Printing** | Slicing and wireless print job submission | OrcaSlicer + Moonraker/OctoPrint |
-| **🖐️ Minority Report UI** | Gesture-controlled window manipulation | MediaPipe Hand Tracking |
-| **👁️ Face Authentication** | Secure local biometric login | MediaPipe Face Landmarker |
-| **🌐 Web Agent** | Autonomous browser automation | Playwright + Chromium |
-| **🏠 Smart Home** | Voice control for TP-Link Kasa devices | `python-kasa` |
-| **📁 Project Memory** | Persistent context across sessions | File-based JSON storage |
-
-### 🖐️ Gesture Control Details
-
-Scarlett's "Minority Report" interface uses your webcam to detect hand gestures:
-
-| Gesture | Action |
-|---------|--------|
-| 🤏 **Pinch** | Confirm action / click |
-| ✋ **Open Palm** | Release the window |
-| ✊ **Close Fist** | "Select" and grab a UI window to drag it |
-
-> **Tip**: Enable the video feed window to see the hand tracking overlay.
+![demo placeholder](docs/demo.gif)
+*(demo GIF / screenshots go here)*
 
 ---
 
-## 🏗️ Architecture Overview
+## Table of Contents
 
-```mermaid
-graph TB
-    subgraph Frontend ["Frontend (Electron + React)"]
-        UI[React UI]
-        THREE[Three.js 3D Viewer]
-        GESTURE[MediaPipe Gestures]
-        SOCKET_C[Socket.IO Client]
-    end
-    
-    subgraph Backend ["Backend (Python 3.11 + FastAPI)"]
-        SERVER[server.py<br/>Socket.IO Server]
-        Scarlett[Scarlett.py<br/>Gemini Live API]
-        WEB[web_agent.py<br/>Playwright Browser]
-        CAD[cad_agent.py<br/>CAD + build123d]
-        PRINTER[printer_agent.py<br/>3D Printing + OrcaSlicer]
-        KASA[kasa_agent.py<br/>Smart Home]
-        AUTH[authenticator.py<br/>MediaPipe Face Auth]
-        PM[project_manager.py<br/>Project Context]
-    end
-    
-    UI --> SOCKET_C
-    SOCKET_C <--> SERVER
-    SERVER --> Scarlett
-    Scarlett --> WEB
-    Scarlett --> CAD
-    Scarlett --> KASA
-    SERVER --> AUTH
-    SERVER --> PM
-    SERVER --> PRINTER
-    CAD -->|STL file| THREE
-    CAD -->|STL file| PRINTER
+- [What it can do](#what-it-can-do)
+- [Architecture](#architecture)
+- [Plugin System](#plugin-system)
+- [Getting Started](#getting-started)
+  - [Prerequisites](#prerequisites)
+  - [Backend setup](#backend-setup)
+  - [Frontend setup](#frontend-setup)
+  - [Environment variables](#environment-variables)
+  - [Running it](#running-it)
+- [Project Structure](#project-structure)
+- [Writing Your Own Plugin](#writing-your-own-plugin)
+- [Before You Run This Yourself](#before-you-run-this-yourself)
+- [License](#license)
+
+---
+
+## What it can do
+
+Scarlett talks like a person (via Gemini's native-audio model), not a script — she interrupts, jokes, pushes back, and remembers things about you across the conversation. On top of that, she can:
+
+- 🗣️ **Real-time voice conversation** — full-duplex audio in/out, live transcription of both sides, camera + screen-share vision so she can see what you see.
+- 🧠 **Persistent memory** — a category-based information store she reads/writes herself (contacts, preferences, directories, "things I've learned about you") using a documented recall → match → update decision process baked into her system prompt.
+- 🖥️ **Computer control** — keyboard/shortcut control, running terminal commands, reading/writing files inside project folders.
+- 🌐 **Web agent** — drives a real browser (Playwright) to complete multi-step tasks, streaming a live view of the page to the UI.
+- 🧊 **CAD generation** — generates and iterates parametric 3D models from natural language (via `build123d`) and shows them in an interactive viewer.
+- 🖨️ **3D printing** — discovers OctoPrint/Moonraker/PrusaLink printers on the network, slices, starts prints, reports progress.
+- 💡 **Smart home** — discovers and controls Kasa smart lights and smart door locks.
+- 📧 **Email** — drafts and sends email in your voice/personality, from just a stated reason (no dictating subject/body).
+- ♟️ **Games** — full interactive chess and backgammon matches against Scarlett, on-screen boards.
+- 🎵 **Music** — search/play/control a local music library with a synced player UI.
+- 🔒 **Optional face authentication** — lock/unlock the assistant with on-device face recognition (MediaPipe), off by default.
+- 🧩 **A real plugin system** — every one of the features above is a self-contained plugin. Adding a new tool means adding a folder; nothing else in the app needs to change. Plugins can even be packaged (`.splugin`), shared, and installed through a UI, similar to a tiny extension marketplace.
+
+## Architecture
+
+```
+┌──────────────────────────┐        Socket.IO / REST        ┌───────────────────────────┐        Gemini Live API
+│   Electron + React UI    │ <────────────────────────────> │   Python backend          │ <────────────────────>  (audio, video,
+│   (src/)                 │                                 │   FastAPI + python-       │                          function calling,
+│   - avatar / audio bars  │                                 │   socketio (backend/)     │                          google_search)
+│   - chat, tool windows   │                                 │   - AudioLoop (core loop) │
+│   - per-plugin UI panels │                                 │   - ToolDispatcher        │
+└──────────────────────────┘                                 └─────────────┬─────────────┘
+                                                                             │
+                                                               ┌─────────────▼─────────────┐
+                                                               │   Plugin registry          │
+                                                               │   backend/plugins/*        │
+                                                               │   (auto-discovered)        │
+                                                               └────────────────────────────┘
 ```
 
----
+- **`backend/Scarlett.py`** owns the `AudioLoop` — the core session with Gemini Live: mic/camera capture, audio playback, transcription, and Scarlett's full system prompt/personality.
+- **`backend/server.py`** is the process entry point: a FastAPI app wrapped in a Socket.IO server. It owns app-wide settings, the plugin manager REST API, and every Socket.IO event the frontend listens to.
+- **`backend/core/`** holds reusable mixins (`AudioIOMixin`, `VideoIOMixin`) and `ToolDispatcher`, which replaced what used to be a 500-line `if/elif` chain of tool handling.
+- **`backend/plugins/`** is where every capability lives — see [Plugin System](#plugin-system) below.
+- **`src/`** is the Electron renderer: a single large `App.jsx` that owns UI state and a Socket.IO client, plus one component per feature/plugin window. `Visualizer.jsx` renders the audio-reactive avatar with Three.js (`@react-three/fiber` + `@react-three/drei`).
 
-## ⚡ TL;DR Quick Start (Experienced Developers)
+## Plugin System
 
-<details>
-<summary>Click to expand quick setup commands</summary>
+This is the part of the codebase worth understanding first if you want to extend Scarlett.
+
+- Each plugin is a folder under `backend/plugins/<id>/`. Its Python module registers tools with a shared `ToolRegistry` using a `@tool(...)` decorator (see `plugins/base.py`).
+- `plugins/loader.py` auto-discovers and imports every plugin folder at startup — **adding a capability is just adding a folder**, nothing else needs to be wired up.
+- `core/tool_dispatcher.py` routes every Gemini function call to the right plugin handler, checks whether the tool is enabled in Settings, and — for tools flagged `requires_confirmation` — pops a confirmation prompt in the UI before running.
+- Plugins that need one canonical, process-wide instance (an agent, a client, a connection pool) use the `lazy_singleton` helper in `plugins/base.py`, so both a tool handler *and* an unrelated REST route in `server.py` can reach the same instance without manual wiring.
+- Plugins that ship a UI window declare it in `plugin.json` under `frontend`; installing one updates `src/plugins.manifest.json` and regenerates `src/pluginRegistry.jsx` automatically (`backend/plugin_tools/registry_sync.py`) — that file is generated, never hand-edited.
+- Plugins can be **packaged** (`backend/plugin_tools/exporter.py` → a `.splugin` zip) and **installed** through the in-app Plugin Manager (Settings → Full Settings → Plugin Manager), which inspects the manifest, shows the user its pip/npm dependencies and requested permissions, and only installs after explicit confirmation.
+
+See [Writing Your Own Plugin](#writing-your-own-plugin) for a minimal example.
+
+## Getting Started
+
+### Prerequisites
+
+- **Python 3.11+**
+- **Node.js 18+** and npm
+- A **Google Gemini API key** ([ai.google.dev](https://ai.google.dev)) with access to the Live API
+- Windows is the primary target platform today (some tools shell out to Windows-specific commands, e.g. `cd /d` for drive switching, and use `pyautogui`/keyboard control assuming a Windows desktop). macOS/Linux will need adjustments to a few plugins.
+- This is an **Electron** app on the frontend — `package.json` points its `main` entry at `electron/main.js` and `App.jsx` uses `window.require('electron')` for the frameless window controls (minimize/maximize/close). Make sure `electron/main.js`, `index.html`, `vite.config.js`, and `tailwind.config.js` exist at the repo root alongside `src/` before running — they weren't part of this README's source snapshot, so double-check they're committed.
+
+### Backend setup
 
 ```bash
-# 1. Clone and enter
-git clone https://github.com/nazirlouis/Scarlett_v2.git && cd Scarlett_v2
+python -m venv venv
+venv\Scripts\activate        # Windows
 
-# 2. Create Python environment (Python 3.11)
-conda create -n Scarlett_v2 python=3.11 -y && conda activate Scarlett_v2
-brew install portaudio  # macOS only (for PyAudio)
 pip install -r requirements.txt
-playwright install chromium
-
-# 3. Setup frontend
-npm install
-
-# 4. Create .env file
-echo "GEMINI_API_KEY=your_key_here" > .env
-
-# 5. Run!
-conda activate Scarlett_v2 && npm run dev
+playwright install
 ```
 
-</details>
+> `PySide6` is in `requirements.txt` but not currently imported anywhere in `backend/` — likely a leftover from an earlier desktop-GUI iteration of this project, kept in case it's still needed. Safe to drop if you confirm nothing uses it.
 
----
-
-## 🛠️ Installation Requirements
-
-### 🆕 Absolute Beginner Setup (Start Here)
-If you have never coded before, follow these steps first!
-
-**Step 1: Install Visual Studio Code (The Editor)**
-- Download and install [VS Code](https://code.visualstudio.com/). This is where you will write code and run commands.
-
-**Step 2: Install Anaconda (The Manager)**
-- Download [Miniconda](https://docs.conda.io/en/latest/miniconda.html) (a lightweight version of Anaconda).
-- This tool allows us to create isolated "playgrounds" (environments) for our code so different projects don't break each other.
-- **Windows Users**: During install, check "Add Anaconda to my PATH environment variable" (even if it says not recommended, it makes things easier for beginners).
-
-**Step 3: Install Git (The Downloader)**
-- **Windows**: Download [Git for Windows](https://git-scm.com/download/win).
-- **Mac**: Open the "Terminal" app (Cmd+Space, type Terminal) and type `git`. If not installed, it will ask to install developer tools—say yes.
-
-**Step 4: Get the Code**
-1. Open your terminal (or Command Prompt on Windows).
-2. Type this command and hit Enter:
-   ```bash
-   git clone https://github.com/nazirlouis/Scarlett_v2.git
-   ```
-3. This creates a folder named `Scarlett_v2`.
-
-**Step 5: Open in VS Code**
-1. Open VS Code.
-2. Go to **File > Open Folder**.
-3. Select the `Scarlett_v2` folder you just downloaded.
-4. Open the internal terminal: Press `Ctrl + ~` (tilde) or go to **Terminal > New Terminal**.
-
----
-
-### ⚠️ Technical Prerequisites
-Once you have the basics above, continue here.
-
-### 1. System Dependencies
-
-**MacOS:**
-```bash
-# Audio Input/Output support (PyAudio)
-brew install portaudio
-```
-
-**Windows:**
-- No additional system dependencies required!
-
-### 2. Python Environment
-Create a single Python 3.11 environment:
+### Frontend setup
 
 ```bash
-conda create -n Scarlett_v2 python=3.11
-conda activate Scarlett_v2
-
-# Install all dependencies
-pip install -r requirements.txt
-
-# Install Playwright browsers
-playwright install chromium
-```
-
-### 3. Frontend Setup
-Requires **Node.js 18+** and **npm**. Download from [nodejs.org](https://nodejs.org/) if not installed.
-
-```bash
-# Verify Node is installed
-node --version  # Should show v18.x or higher
-
-# Install frontend dependencies
 npm install
 ```
 
-### 4. 🔐 Face Authentication Setup
-To use the secure voice features, Scarlett needs to know what you look like.
+Key runtime pieces beyond React itself: `socket.io-client` (backend connection), `@mediapipe/tasks-vision` (hand-tracking cursor), `three` + `@react-three/fiber` + `@react-three/drei` (the 3D avatar/audio visualizer), `chess.js` / `react-chessboard` (chess plugin UI), `framer-motion` (animations), and `electron` itself.
 
-1. Take a clear photo of your face (or use an existing one).
-2. Rename the file to `reference.jpg`.
-3. Drag and drop this file into the `Scarlett_v2/backend` folder.
-4. (Optional) You can toggle this feature on/off in `settings.json` by changing `"face_auth_enabled": true/false`.
+### Environment variables
 
----
+Create `backend/.env`:
 
-## ⚙️ Configuration (`settings.json`)
+| Variable | Purpose |
+|---|---|
+| `GEMINI_API_KEY` | Google Gemini API key (Live API access) |
+| `OPENWEATHER_API_KEY` | Weather lookups |
+| `EMAIL_ADDRESS` / `EMAIL_APP_PASSWORD` | SMTP sending account (use an app password, not your real password) |
+| `EMAIL_IMAP` / `EMAIL_IMAP_PORT` | IMAP server for reading mail |
+| `MUSIC_FOLDER_PATH` | Root folder the music plugin searches |
+| `USER_NAME` | Your real name (used in the system prompt) |
+| `USER_KNOWN_AS` | What Scarlett calls you ("sir", your name, a nickname, ...) |
+| `OS` | Target OS string, used by a couple of platform-specific tools |
+| `AGENT_NAME` | Overrides the assistant's spoken name if you don't want "Scarlett" |
+| `VOICE` | Gemini prebuilt voice name |
 
-The system creates a `settings.json` file on first run. You can modify this to change behavior:
+`backend/settings.json` holds everything that changes at runtime through the Settings UI instead of `.env`: face-auth toggle, per-tool enable/disable (`tool_permissions`), known printers/Kasa devices/door locks, selected mic/speaker/webcam, and cursor sensitivity for the hand-tracking cursor. It's created with sane defaults on first run if missing.
 
-| Key | Type | Description |
-| :--- | :--- | :--- |
-| `face_auth_enabled` | `bool` | If `true`, blocks all AI interaction until your face is recognized via the camera. |
-| `tool_permissions` | `obj` | Controls manual approval for specific tools. |
-| `tool_permissions.generate_cad` | `bool` | If `true`, requires you to click "Confirm" on the UI before generating CAD. |
-| `tool_permissions.run_web_agent` | `bool` | If `true`, requires confirmation before opening the browser agent. |
-| `tool_permissions.write_file` | `bool` | **Critical**: Requires confirmation before the AI writes code/files to disk. |
+### Running it
 
----
-
-### 5. 🖨️ 3D Printer Setup
-Scarlett V2 can slice STL files and send them directly to your 3D printer.
-
-**Supported Hardware:**
-- **Klipper/Moonraker** (Creality K1, Voron, etc.)
-- **OctoPrint** instances
-- **PrusaLink** (Experimental)
-
-**Step 1: Install Slicer**
-Scarlett uses **OrcaSlicer** (recommended) or PrusaSlicer to generate G-code.
-1. Download and install [OrcaSlicer](https://github.com/SoftFever/OrcaSlicer).
-2. Run it once to ensure profiles are created.
-3. Scarlett automatically detects the installation path.
-
-**Step 2: Connect Printer**
-1. Ensure your printer and computer are on the **same Wi-Fi network**.
-2. Open the **Printer Window** in Scarlett (Cube icon).
-3. Scarlett automatically scans for printers using mDNS.
-4. **Manual Connection**: If your printer isn't found, use the "Add Printer" button and enter the IP address (e.g., `192.168.1.50`).
-
----
-
-### 6. 🔑 Gemini API Key Setup
-Scarlett uses Google's Gemini API for voice and intelligence. You need a free API key.
-
-1. Go to [Google AI Studio](https://aistudio.google.com/app/apikey).
-2. Sign in with your Google account.
-3. Click **"Create API Key"** and copy the generated key.
-4. Create a file named `.env` in the `Scarlett_v2` folder (same level as `README.md`).
-5. Add this line to the file:
-   ```
-   GEMINI_API_KEY=your_api_key_here
-   ```
-6. Replace `your_api_key_here` with the key you copied.
-
-> **Note**: Keep this key private! Never commit your `.env` file to Git.
-
----
-
-## 🚀 Running Scarlett V2
-
-You have two options to run the app. Ensure your `Scarlett_v2` environment is active!
-
-### Option 1: The "Easy" Way (Single Terminal)
-The app is smart enough to start the backend for you.
-1. Open your terminal in the `Scarlett_v2` folder.
-2. Activate your environment: `conda activate Scarlett_v2`
-3. Run:
-   ```bash
-   npm run dev
-   ```
-4. The backend will start automatically in the background.
-
-### Option 2: The "Developer" Way (Two Terminals)
-Use this if you want to see the Python logs (recommended for debugging).
-
-**Terminal 1 (Backend):**
 ```bash
-conda activate Scarlett_v2
-python backend/server.py
+# terminal 1 — backend
+python backend/server.py         # serves on http://127.0.0.1:8000
+
+# terminal 2 — frontend + Electron shell
+npm run dev               # starts Vite, waits for it, then launches Electron
 ```
 
-**Terminal 2 (Frontend):**
-```bash
-# Environment doesn't matter here, but keep it simple
-npm run dev
-```
+`npm run dev` runs `vite` and `electron .` together (via `concurrently` + `wait-on`), so the Electron window opens automatically once the Vite dev server on port 5173 is ready. Use `npm run build` for a production Vite build and `npm start` to launch Electron against it. Hit the mic button to start talking.
 
----
-
-## ✅ First Flight Checklist (Things to Test)
-
-1. **Voice Check**: Say "Hello Scarlett". She should respond.
-2. **Vision Check**: Look at the camera. If Face Auth is on, the lock screen should unlock.
-3. **CAD Check**: Open the CAD window and say "Create a cube". Watch the logs.
-4. **Web Check**: Open the Browser window and say "Go to Google".
-5. **Smart Home**: If you have Kasa devices, say "Turn on the lights".
-
----
-
-## ▶️ Commands & Tools Reference
-
-### 🗣️ Voice Commands
-- "Switch project to [Name]"
-- "Create a new project called [Name]"
-- "Turn on the [Room] light"
-- "Make the light [Color]"
-- "Pause audio" / "Stop audio"
-
-### 🧊 3D CAD
-- **Prompt**: "Create a 3D model of a hex bolt."
-- **Iterate**: "Make the head thinner." (Requires previous context)
-- **Files**: Saves to `projects/[ProjectName]/output.stl`.
-
-### 🌐 Web Agent
-- **Prompt**: "Go to Amazon and find a USB-C cable under $10."
-- **Note**: The agent will auto-scroll, click, and type. Do not interfere with the browser window while it runs.
-
-### 🖨️ Printing & Slicing
-- **Auto-Discovery**: Scarlett automatically finds printers on your network.
-- **Slicing**: Click "Slice & Print" on any generated 3D model.
-- **Profiles**: Scarlett intelligently selects the correct OrcaSlicer profile based on your printer's name (e.g., "Creality K1").
-
----
-
-## ❓ Troubleshooting FAQ
-
-### Camera not working / Permission denied (Mac)
-**Symptoms**: Error about camera access, or video feed shows black.
-
-**Solution**:
-1. Go to **System Preferences > Privacy & Security > Camera**.
-2. Ensure your terminal app (e.g., Terminal, iTerm, VS Code) has camera access enabled.
-3. Restart the app after granting permission.
-
----
-
-### `GEMINI_API_KEY` not found / Authentication Error
-**Symptoms**: Backend crashes on startup with "API key not found".
-
-**Solution**:
-1. Make sure your `.env` file is in the root `Scarlett_v2` folder (not inside `backend/`).
-2. Verify the format is exactly: `GEMINI_API_KEY=your_key` (no quotes, no spaces).
-3. Restart the backend after editing the file.
-
----
-
-### WebSocket connection errors (1011)
-**Symptoms**: `websockets.exceptions.ConnectionClosedError: 1011 (internal error)`.
-
-**Solution**:
-This is a server-side issue from the Gemini API. Simply reconnect by clicking the connect button or saying "Hello Scarlett" again. If it persists, check your internet connection or try again later.
-
----
-
-## 📸 What It Looks Like
-
-*Coming soon! Screenshots and demo videos will be added here.*
-
----
-
-## 📂 Project Structure
+## Project Structure
 
 ```
-Scarlett_v2/
-├── backend/                    # Python server & AI logic
-│   ├── Scarlett.py                  # Gemini Live API integration
-│   ├── server.py               # FastAPI + Socket.IO server
-│   ├── cad_agent.py            # CAD generation orchestrator
-│   ├── printer_agent.py        # 3D printer discovery & slicing
-│   ├── web_agent.py            # Playwright browser automation
-│   ├── kasa_agent.py           # TP-Link smart home control
-│   ├── authenticator.py        # MediaPipe face auth logic
-│   ├── project_manager.py      # Project context management
-│   ├── tools.py                # Tool definitions for Gemini
-│   └── reference.jpg           # Your face photo (add this!)
-├── src/                        # React frontend
-│   ├── App.jsx                 # Main application component
-│   ├── components/             # UI components (11 files)
-│   └── index.css               # Global styles
-├── electron/                   # Electron main process
-│   └── main.js                 # Window & IPC setup
-├── projects/                   # User project data (auto-created)
-├── .env                        # API keys (create this!)
-├── requirements.txt            # Python dependencies
-├── package.json                # Node.js dependencies
-└── README.md                   # You are here!
+backend/
+├── Scarlett.py           # AudioLoop: the Gemini Live session + system prompt
+├── server.py              # FastAPI + Socket.IO entry point, settings & plugin manager API
+├── authenticator.py        # Optional face-auth
+├── core/
+│   ├── audio_io.py         # Mic capture / speaker playback mixin
+│   ├── video_io.py         # Webcam / screen-share mixin
+│   └── tool_dispatcher.py  # Routes Gemini tool calls to plugin handlers
+├── plugins/                # One folder per capability — see Plugin System
+│   ├── base.py             # ToolRegistry, @tool decorator, lazy_singleton
+│   ├── loader.py            # Auto-discovers & imports every plugin
+│   ├── cad/ chess/ backgammon/ music/ printer/ smarthome/ web/  # manifest-based (installable/exportable)
+│   └── cmd/ email/ files/ items/ keyboard/ project/ misc/       # built-in, no manifest
+├── plugin_tools/
+│   ├── importer.py          # Install a .splugin package
+│   ├── exporter.py          # Package a plugin folder into a .splugin
+│   └── registry_sync.py     # Keeps src/pluginRegistry.jsx generated from the manifest
+└── web/full_settings.html   # Full settings page (env vars, tool permissions, plugin manager UI)
+
+src/
+├── App.jsx                  # Main renderer: layout, socket wiring, window management
+├── pluginRegistry.jsx        # AUTO-GENERATED — do not hand-edit
+├── plugins.manifest.json     # Source of truth for installed UI plugins
+└── components/                # One component per feature/plugin window
 ```
 
----
+## Writing Your Own Plugin
 
-## ⚠️ Known Limitations
+Minimal example — `backend/plugins/hello/__init__.py`:
 
-| Limitation | Details |
-|------------|---------|
-| **macOS & Windows** | Tested on macOS 14+ and Windows 10/11. Linux is untested. |
-| **Camera Required** | Face auth and gesture control need a working webcam. |
-| **Gemini API Quota** | Free tier has rate limits; heavy CAD iteration may hit limits. |
-| **Network Dependency** | Requires internet for Gemini API (no offline mode). |
-| **Single User** | Face auth recognizes one person (the `reference.jpg`). |
+```python
+from plugins.base import tool
 
----
+@tool(
+    name="say_hello",
+    description="Says hello to someone by name.",
+    parameters={
+        "type": "object",
+        "properties": {"name": {"type": "string"}},
+        "required": ["name"],
+    },
+)
+async def say_hello(ctx, fc):
+    name = fc.args.get("name", "there")
+    return f"Hello, {name}!"
+```
 
-## 🤝 Contributing
+Restart the backend — that's it. `loader.py` picks it up automatically, `Scarlett.py` includes its schema in the Gemini `tools` list, and `ToolDispatcher` routes calls to it. Add a `plugin.json` (see any folder under `plugins/` that has one) plus a `frontend` entry if it needs a UI window, so it can also be exported/installed via the Plugin Manager.
 
-Contributions are welcome! Here's how:
+## Before You Run This Yourself
 
-1. **Fork** the repository.
-2. **Create a branch**: `git checkout -b feature/amazing-feature`
-3. **Commit** your changes: `git commit -m 'Add amazing feature'`
-4. **Push** to the branch: `git push origin feature/amazing-feature`
-5. **Open a Pull Request** with a clear description.
+This repo was extracted directly from a working personal setup. Before you push it publicly or hand it to someone else, go through this list:
 
-### Development Tips
+- [ ] **`backend/.env`** — contains real API keys and an email app password. Never commit this; add it to `.gitignore` and ship a `.env.example` with empty values instead.
+- [ ] **`backend/reference.jpg`** — the face-auth reference photo. Remove it (and don't commit a real one) unless you specifically want your face in the repo.
+- [ ] **`backend/plugins/email/credentials.json` and `token.json`** — Google OAuth credentials/tokens for the email plugin. Never commit these.
+- [ ] **`backend/settings.json`** — contains real device info (printer name/IP, selected mic/webcam). Fine to keep structurally, but scrub personal identifiers or ship a `settings.example.json` instead and gitignore the real one.
+- [ ] Add a proper **`.gitignore`** (`.env`, `venv/`, `node_modules/`, `*.token.json`, `credentials.json`, `settings.json`, `reference.jpg`, `__pycache__/`, build output).
+- [ ] Confirm `electron/main.js`, `index.html`, `vite.config.js`, and `tailwind.config.js` are actually committed alongside `package.json` and `requirements.txt` — none of those four were part of what was reviewed while writing this README.
 
-- Run the backend separately (`python backend/server.py`) to see Python logs.
-- Use `npm run dev` without Electron during frontend development (faster reload).
-- The `projects/` folder contains user data—don't commit it to Git.
+## Credits
 
----
+This project began as a fork/extension of an earlier MIT-licensed assistant project by Nazir Louis. The original repository isn't linked here (link not currently available) — see [`LICENSE`](LICENSE) for the preserved original copyright notice.
 
-## 🔒 Security Considerations
+## Note
 
-| Aspect | Implementation |
-|--------|----------------|
-| **API Keys** | Stored in `.env`, never committed to Git. |
-| **Face Data** | Processed locally, never uploaded. |
-| **Tool Confirmations** | Write/CAD/Web actions can require user approval. |
-| **No Cloud Storage** | All project data stays on your machine. |
+This project is not compelete yet and I am working on it.
+If you found a bug in this project or just need some help please let me know:
+```
+mahanbiabani12@gmail.com
+```
 
-> [!WARNING]
-> Never share your `.env` file or `reference.jpg`. These contain sensitive credentials and biometric data.
+## License
 
----
-
-## 🙏 Acknowledgments
-
-- **[Google Gemini](https://deepmind.google/technologies/gemini/)** — Native Audio API for real-time voice
-- **[build123d](https://github.com/gumyr/build123d)** — Modern parametric CAD library
-- **[MediaPipe](https://developers.google.com/mediapipe)** — Hand tracking, gesture recognition, and face authentication
-- **[Playwright](https://playwright.dev/)** — Reliable browser automation
-
----
-
-## 📄 License
-
-This project is licensed under the **MIT License** — see the [LICENSE](LICENSE) file for details.
-
----
-
-<p align="center">
-  <strong>Built with 🤖 by Nazir Louis</strong><br>
-  <em>Bridging AI, CAD, and Vision in a Single Interface</em>
-</p>
+MIT — see [`LICENSE`](LICENSE). Note the license file carries two copyright lines: the original author's (required to be preserved under the MIT terms of the base project) and this fork's.

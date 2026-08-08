@@ -1,0 +1,37 @@
+[
+    {
+        "id": "music",
+        "component": "MusicWindow",
+        "file": "MusicWindow.jsx"
+    },
+    {
+        "id": "cad",
+        "component": "CadWindow",
+        "file": "CadWindow.jsx"
+    },
+    {
+        "id": "kasa",
+        "component": "KasaWindow",
+        "file": "KasaWindow.jsx"
+    },
+    {
+        "id": "door",
+        "component": "DoorWindow",
+        "file": "DoorWindow.jsx"
+    },
+    {
+        "id": "printer",
+        "component": "PrinterWindow",
+        "file": "PrinterWindow.jsx"
+    },
+    {
+        "id": "browser",
+        "component": "BrowserWindow",
+        "file": "BrowserWindow.jsx"
+    },
+    {
+        "id": "chess",
+        "component": "ChessWindow",
+        "file": "ChessWindow.jsx"
+    }
+]

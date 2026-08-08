@@ -1,0 +1,23 @@
+{
+    "id": "printer",
+    "name": "3D Printer Control",
+    "version": "1.0.0",
+    "description": "Discovers, slices for, and prints to OctoPrint/Moonraker/PrusaLink 3D printers.",
+    "author": "Scarlett",
+    "frontend": [
+        {
+            "component": "PrinterWindow",
+            "file": "PrinterWindow.jsx",
+            "ui_id": "printer"
+        }
+    ],
+    "python_dependencies": [
+        "aiohttp",
+        "zeroconf"
+    ],
+    "npm_dependencies": {},
+    "permissions": [
+        "ui_window",
+        "network"
+    ]
+}

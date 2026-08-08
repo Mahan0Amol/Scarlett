@@ -1,0 +1,28 @@
+{
+    "id": "smarthome",
+    "name": "Smart Home",
+    "version": "1.0.0",
+    "description": "Discovers and controls Kasa smart lights and smart door locks.",
+    "author": "Scarlett",
+    "frontend": [
+        {
+            "component": "KasaWindow",
+            "file": "KasaWindow.jsx",
+            "ui_id": "kasa"
+        },
+        {
+            "component": "DoorWindow",
+            "file": "DoorWindow.jsx",
+            "ui_id": "door"
+        }
+    ],
+    "python_dependencies": [
+        "python-kasa",
+        "aiohttp"
+    ],
+    "npm_dependencies": {},
+    "permissions": [
+        "ui_window",
+        "network"
+    ]
+}

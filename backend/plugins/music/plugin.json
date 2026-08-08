@@ -1,0 +1,23 @@
+{
+    "id": "music",
+    "name": "Music Player",
+    "version": "1.0.0",
+    "description": "Search, play, and control local music with a synced UI player.",
+    "author": "Scarlett",
+    "frontend": [
+        {
+            "component": "MusicWindow",
+            "file": "MusicWindow.jsx",
+            "ui_id": "music"
+        }
+    ],
+    "python_dependencies": [
+        "python-vlc",
+        "mutagen"
+    ],
+    "npm_dependencies": {},
+    "permissions": [
+        "ui_window",
+        "filesystem_read"
+    ]
+}

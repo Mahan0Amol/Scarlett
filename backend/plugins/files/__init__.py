@@ -63,6 +63,7 @@ async def _read_file(ctx, path):
         },
         "required": ["path", "content"],
     },
+    requires_confirmation=True,
 )
 async def write_file(ctx, fc):
     asyncio.create_task(_write_file(ctx, fc.args["path"], fc.args["content"]))
