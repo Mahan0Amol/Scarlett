@@ -196,7 +196,7 @@ async def say_hello(ctx, fc):
     return f"Hello, {name}!"
 ```
 
-Your plugin should have __init__.py, plugin.json and if it have a frontend window add it in frontend/YourPluginWindow.jsx
+Your plugin should have plugin.json and if it have a frontend window add it in frontend/YourPluginWindow.jsx
 
 Restart the backend — that's it. `loader.py` picks it up automatically, `Scarlett.py` includes its schema in the Gemini `tools` list, and `ToolDispatcher` routes calls to it. Add a `plugin.json` (see any folder under `plugins/` that has one) plus a `frontend` entry if it needs a UI window, so it can also be exported/installed via the Plugin Manager.
 
