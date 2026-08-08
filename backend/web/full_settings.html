@@ -77,22 +77,7 @@
                     <label class="text-xs text-gray-500 uppercase tracking-wider">Your computer's OS</label>
                     <input type="text" id="pi_os" class="w-full bg-black/40 border border-white/10 rounded-lg p-2 text-sm text-red-300 mono neon-border mt-1" placeholder="Windows 11">
                 </div>
-                <div>
-                    <label class="text-xs text-gray-500 uppercase tracking-wider">AI Name</label>
-                    <input type="text" id="pi_agent_name" class="w-full bg-black/40 border border-white/10 rounded-lg p-2 text-sm text-red-300 mono neon-border mt-1" placeholder="Scarlett">
-                </div>
-                <div class="col-span-2">
-                    <label class="text-xs text-gray-500 uppercase tracking-wider">AI Voice</label>
-                    <select id="pi_voice" class="w-full bg-black/40 border border-white/10 rounded-lg p-2 text-sm text-red-300 mono neon-border mt-1">
-                        <option value="Kore">Kore</option>
-                        <option value="Puck">Puck</option>
-                        <option value="Charon">Charon</option>
-                        <option value="Fenrir">Fenrir</option>
-                        <option value="Leda">Leda</option>
-                        <option value="Orus">Orus</option>
-                        <option value="Aoede">Aoede</option>
-                    </select>
-                </div>
+                
             </div>
         </div>
 
@@ -205,7 +190,7 @@
 
     <script>
         // Keys managed by the Personal Info form
-        const personalInfoKeys = ["USER_NAME", "USER_KNOWN_AS", "OS", "VOICE", "AGENT_NAME"];
+        const personalInfoKeys = ["USER_NAME", "USER_KNOWN_AS", "OS"];
 
         document.querySelectorAll('.toggle-checkbox').forEach(cb => {
             cb.addEventListener('change', () => {
@@ -262,8 +247,6 @@
                     if (v.key === "USER_NAME") document.getElementById('pi_user_name').value = v.value;
                     if (v.key === "USER_KNOWN_AS") document.getElementById('pi_user_known_as').value = v.value;
                     if (v.key === "OS") document.getElementById('pi_os').value = v.value;
-                    if (v.key === "AGENT_NAME") document.getElementById('pi_agent_name').value = v.value;
-                    if (v.key === "VOICE") document.getElementById('pi_voice').value = v.value;
                 });
 
                 // Filter out personal info keys from the generic table
@@ -334,8 +317,6 @@
             vars.push({ key: "USER_NAME", value: document.getElementById('pi_user_name').value.trim() });
             vars.push({ key: "USER_KNOWN_AS", value: document.getElementById('pi_user_known_as').value.trim() });
             vars.push({ key: "OS", value: document.getElementById('pi_os').value.trim() });
-            vars.push({ key: "AGENT_NAME", value: document.getElementById('pi_agent_name').value.trim() });
-            vars.push({ key: "VOICE", value: document.getElementById('pi_voice').value.trim() });
 
             const res = await fetch('/api/env/data', {
                 method: 'POST',
