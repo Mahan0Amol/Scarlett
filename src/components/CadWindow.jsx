@@ -260,4 +260,9 @@ const CadWindow = ({
     );
 };
 
+CadWindow.pluginMeta = {
+    label: "CAD Agent",
+    icon: Box,
+};
+
 export default CadWindow;

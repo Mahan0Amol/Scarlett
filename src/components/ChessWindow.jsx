@@ -159,4 +159,9 @@ const ChessWindow = ({
     );
 };
 
+ChessWindow.pluginMeta = {
+    label: "Chess Match",
+    icon: Gamepad2,
+};
+
 export default ChessWindow;

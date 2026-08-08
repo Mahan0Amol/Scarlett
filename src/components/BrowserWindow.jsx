@@ -110,4 +110,9 @@ const BrowserWindow = ({
     );
 };
 
+BrowserWindow.pluginMeta = {
+    label: "Web Agent",
+    icon: Globe,
+};
+
 export default BrowserWindow;

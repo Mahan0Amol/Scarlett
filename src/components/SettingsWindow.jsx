@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { X, ExternalLink } from 'lucide-react';
+import { PLUGIN_META, MAX_TOOLBAR_PLUGINS } from '../pluginRegistry';
+
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
 
 const SettingsWindow = ({
     socket,
@@ -17,6 +20,8 @@ const SettingsWindow = ({
     isCameraFlipped,
     setIsCameraFlipped,
     handleFileUpload,
+    toolbarPluginIds = [],
+    setToolbarPluginIds,
     onClose
 }) => {
     const [permissions, setPermissions] = useState({});
@@ -27,11 +32,21 @@ const SettingsWindow = ({
         // Fetched fresh from the backend's live plugin registry, so any
         // installed plugin's tools show up automatically - nothing here
         // needs to be hardcoded or updated when a plugin is added/removed.
-        fetch('http://localhost:8000/api/tools/list')
+        fetch(`${BACKEND_URL}/api/tools/list`)
             .then(res => res.json())
             .then(setTools)
             .catch(err => console.error('Failed to load tools list:', err));
     }, []);
+
+    const toggleToolbarPlugin = (id) => {
+        if (!setToolbarPluginIds) return;
+        const isSelected = toolbarPluginIds.includes(id);
+        if (isSelected) {
+            setToolbarPluginIds(toolbarPluginIds.filter(p => p !== id));
+        } else if (toolbarPluginIds.length < MAX_TOOLBAR_PLUGINS) {
+            setToolbarPluginIds([...toolbarPluginIds, id]);
+        }
+    };
 
     useEffect(() => {
         socket.emit('get_settings');
@@ -76,7 +91,7 @@ const SettingsWindow = ({
     // Function to open the web dashboard in default browser
     const openFullSettings = () => {
         const { shell } = window.require('electron');
-        shell.openExternal('http://localhost:8000/full-settings');
+        shell.openExternal(`${BACKEND_URL}/full-settings`);
     };
 
     return (
@@ -182,6 +197,40 @@ const SettingsWindow = ({
                             className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform duration-200 ${isCameraFlipped ? 'translate-x-4' : 'translate-x-0'}`}
                         />
                     </button>
+                </div>
+            </div>
+
+            {/* Toolbar Shortcuts Section */}
+            <div className="mb-6">
+                <h3 className="text-red-400 font-bold mb-1 text-xs uppercase tracking-wider opacity-80">
+                    Toolbar Shortcuts ({toolbarPluginIds.length}/{MAX_TOOLBAR_PLUGINS})
+                </h3>
+                <p className="text-[10px] text-gray-500 mb-2">
+                    Pick up to {MAX_TOOLBAR_PLUGINS} plugins to pin in the toolbar. Unpinned plugins can still be opened by the AI, just not from a toolbar button.
+                </p>
+                <div className="flex flex-col gap-1.5 max-h-48 overflow-y-auto pr-1">
+                    {PLUGIN_META.map(({ id, label, icon: Icon }) => {
+                        const isSelected = toolbarPluginIds.includes(id);
+                        const isDisabled = !isSelected && toolbarPluginIds.length >= MAX_TOOLBAR_PLUGINS;
+                        return (
+                            <label
+                                key={id}
+                                className={`flex items-center justify-between text-xs bg-gray-900/50 p-2 rounded border border-red-900/30 ${isDisabled ? 'opacity-40' : 'cursor-pointer'}`}
+                            >
+                                <span className="flex items-center gap-2 text-red-100/80">
+                                    {Icon && <Icon size={14} className="text-red-400 shrink-0" />}
+                                    {label}
+                                </span>
+                                <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    disabled={isDisabled}
+                                    onChange={() => toggleToolbarPlugin(id)}
+                                    className="accent-red-500"
+                                />
+                            </label>
+                        );
+                    })}
                 </div>
             </div>
 

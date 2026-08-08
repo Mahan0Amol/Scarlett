@@ -244,4 +244,11 @@ const MusicWindow = ({
     );
 };
 
+// Toolbar metadata: lets the toolbar render this plugin's launcher icon
+// without App.jsx having to hardcode anything about MusicWindow.
+MusicWindow.pluginMeta = {
+    label: "Music Player",
+    icon: Music,
+};
+
 export default MusicWindow;

@@ -20,3 +20,25 @@ export const UI_PLUGINS = {
     browser: BrowserWindow,
     chess: ChessWindow,
 };
+
+// Max number of plugins a user may pin to the toolbar at once. This mirrors
+// the number of quick-launch slots the toolbar used to hardcode (kasa, door,
+// printer, cad, browser = 5), so pinning stays bounded no matter how many
+// plugins get added to UI_PLUGINS in the future. Adding a new plugin here
+// never requires touching the toolbar - it just becomes selectable.
+export const MAX_TOOLBAR_PLUGINS = 5;
+
+// Every plugin component declares its own toolbar identity via a static
+// `pluginMeta = { label, icon }` property (see e.g. KasaWindow.jsx). This
+// derives a flat, renderable list from that - so ToolsModule/pickers never
+// need to know about individual plugins by name.
+export const PLUGIN_META = Object.entries(UI_PLUGINS).map(([id, Component]) => ({
+    id,
+    label: Component.pluginMeta?.label || id,
+    icon: Component.pluginMeta?.icon || null,
+}));
+
+// Sensible default set of pinned toolbar plugins for first-run / users who
+// haven't customized anything yet. Kept at MAX_TOOLBAR_PLUGINS so existing
+// behavior doesn't change until someone opens the picker.
+export const DEFAULT_TOOLBAR_PLUGINS = ['kasa', 'door', 'printer', 'cad', 'browser'];

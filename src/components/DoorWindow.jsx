@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, RefreshCw, Power, Sun, Palette } from 'lucide-react';
+import { X, RefreshCw, Lock, Unlock, DoorOpen } from 'lucide-react';
 
 const DoorWindow = ({
     socket,
@@ -12,13 +12,13 @@ const DoorWindow = ({
 }) => {
     // Extract plugin-specific data from the data prop
     const devices = data.devices || [];
-    
+
     const [isThinking, setIsThinking] = useState(false);
     const [loadingDevices, setLoadingDevices] = useState({}); // { ip: true/false }
 
     useEffect(() => {
         if (!socket) return;
-        
+
         // Listen for individual updates to clear loading state
         const onUpdate = (updateData) => {
             if (updateData && updateData.ip) {
@@ -47,20 +47,15 @@ const DoorWindow = ({
         setTimeout(() => setIsThinking(false), 10000);
     };
 
-    const handleToggle = (ip, currentState) => {
+    // A door only has two meaningful states: locked / unlocked.
+    // (Previously this copied KasaWindow's on/off + brightness/color
+    // controls, which don't make sense for a physical lock.)
+    const handleToggleLock = (ip, isLocked) => {
         setLoadingDevices(prev => ({ ...prev, [ip]: true }));
         socket.emit('control_door', {
             ip: ip,
-            action: currentState ? 'off' : 'on'
+            action: isLocked ? 'unlock' : 'lock'
         });
-    };
-
-    const handleBrightness = (ip, value) => {
-        socket.emit('control_door', { ip, action: 'brightness', value: parseInt(value) });
-    };
-
-    const handleColor = (ip, value) => {
-        socket.emit('control_door', { ip, action: 'color', value: { h: parseInt(value) } });
     };
 
     return (
@@ -119,64 +114,45 @@ const DoorWindow = ({
                     </div>
                 )}
 
-                {devices.map((dev) => (
-                    <div key={dev.ip} className="mb-3 p-3 bg-white/5 rounded-lg border border-white/10 hover:border-red-500/30 transition-all">
-                        <div className="flex items-center justify-between mb-2">
-                            <div className="flex flex-col">
-                                <span className="font-bold text-sm text-white">{dev.alias}</span>
-                                <span className="text-[10px] text-white/40 font-mono">{dev.ip}</span>
+                {devices.map((dev) => {
+                    // Backend may report the lock state as `is_locked`, or
+                    // (legacy) as `is_on` where "on" meant "locked". Accept
+                    // either so this keeps working regardless of payload shape.
+                    const isLocked = dev.is_locked ?? dev.is_on ?? false;
+                    const isLoading = loadingDevices[dev.ip];
+
+                    return (
+                        <div key={dev.ip} className="mb-3 p-3 bg-white/5 rounded-lg border border-white/10 hover:border-red-500/30 transition-all">
+                            <div className="flex items-center justify-between">
+                                <div className="flex flex-col">
+                                    <span className="font-bold text-sm text-white">{dev.alias}</span>
+                                    <span className="text-[10px] text-white/40 font-mono">{dev.ip}</span>
+                                    <span className={`text-[10px] font-bold uppercase tracking-wider mt-1 ${isLocked ? 'text-green-400' : 'text-yellow-400'}`}>
+                                        {isLocked ? 'Locked' : 'Unlocked'}
+                                    </span>
+                                </div>
+                                <button
+                                    onClick={() => handleToggleLock(dev.ip, isLocked)}
+                                    disabled={isLoading}
+                                    title={isLocked ? 'Unlock door' : 'Lock door'}
+                                    className={`p-2 rounded-full transition-all ${isLocked
+                                        ? 'bg-green-500/20 text-green-400 shadow-[0_0_10px_rgba(34,197,94,0.3)]'
+                                        : 'bg-yellow-500/10 text-yellow-400 hover:text-white'}
+                                        ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}
+                                    `}
+                                >
+                                    {isLoading ? (
+                                        <div className="w-[18px] h-[18px] border-2 border-current border-t-transparent rounded-full animate-spin" />
+                                    ) : isLocked ? (
+                                        <Lock size={18} />
+                                    ) : (
+                                        <Unlock size={18} />
+                                    )}
+                                </button>
                             </div>
-                            <button
-                                onClick={() => handleToggle(dev.ip, dev.is_on)}
-                                disabled={loadingDevices[dev.ip]}
-                                className={`p-2 rounded-full transition-all ${dev.is_on
-                                    ? 'bg-green-500/20 text-green-400 shadow-[0_0_10px_rgba(34,197,94,0.3)]'
-                                    : 'bg-white/5 text-gray-500 hover:text-white'}
-                                    ${loadingDevices[dev.ip] ? 'opacity-50 cursor-not-allowed' : ''}
-                                `}
-                            >
-                                {loadingDevices[dev.ip] ? (
-                                    <div className="w-[18px] h-[18px] border-2 border-current border-t-transparent rounded-full animate-spin" />
-                                ) : (
-                                    <Power size={18} />
-                                )}
-                            </button>
                         </div>
-
-                        {/* Brightness Control */}
-                        {dev.has_brightness && dev.is_on && (
-                            <div className="flex items-center gap-2 mt-2">
-                                <Sun size={14} className="text-yellow-500/70" />
-                                <input
-                                    type="range"
-                                    min="0"
-                                    max="100"
-                                    defaultValue={dev.brightness || 100}
-                                    onChange={(e) => handleBrightness(dev.ip, e.target.value)}
-                                    className="w-full h-1 bg-white/10 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-red-400"
-                                />
-                            </div>
-                        )}
-
-                        {/* Color Control */}
-                        {dev.has_color && dev.is_on && (
-                            <div className="flex items-center gap-2 mt-2">
-                                <Palette size={14} className="text-purple-500/70" />
-                                <input
-                                    type="range"
-                                    min="0"
-                                    max="360"
-                                    defaultValue={(dev.hsv && dev.hsv.h) || 0}
-                                    onChange={(e) => handleColor(dev.ip, e.target.value)}
-                                    className="w-full h-1 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-white"
-                                    style={{
-                                        background: 'linear-gradient(to right, red, yellow, lime, red, blue, magenta, red)'
-                                    }}
-                                />
-                            </div>
-                        )}
-                    </div>
-                ))}
+                    );
+                })}
             </div>
 
             {/* Bottom Discover (if devices exist) */}
@@ -193,6 +169,11 @@ const DoorWindow = ({
             )}
         </div>
     );
+};
+
+DoorWindow.pluginMeta = {
+    label: "Smart Door",
+    icon: DoorOpen,
 };
 
 export default DoorWindow;

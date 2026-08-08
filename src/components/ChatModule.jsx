@@ -53,7 +53,7 @@ const ChatModule = ({
                 <div ref={messagesEndRef} />
             </div>
 
-            <div className="flex gap-2 relative z-10 absolute bottom-4 left-6 right-6">
+            <div className="flex gap-2 absolute z-10 bottom-4 left-6 right-6">
                 <input
                     type="text"
                     value={inputValue}

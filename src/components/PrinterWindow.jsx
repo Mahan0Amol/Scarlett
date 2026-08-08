@@ -311,4 +311,9 @@ const PrinterWindow = ({
     );
 };
 
+PrinterWindow.pluginMeta = {
+    label: "3D Printers",
+    icon: Printer,
+};
+
 export default PrinterWindow;

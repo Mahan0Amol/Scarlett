@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, RefreshCw, Power, Sun, Palette } from 'lucide-react';
+import { X, RefreshCw, Power, Sun, Palette, Lightbulb } from 'lucide-react';
 
 const KasaWindow = ({
     socket,
@@ -201,6 +201,11 @@ const KasaWindow = ({
             )}
         </div>
     );
+};
+
+KasaWindow.pluginMeta = {
+    label: "Smart Lights",
+    icon: Lightbulb,
 };
 
 export default KasaWindow;

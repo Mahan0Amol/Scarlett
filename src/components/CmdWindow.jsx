@@ -1,6 +1,48 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Terminal, X, Folder, ChevronRight } from 'lucide-react';
 
+// Command output is rendered as raw HTML when the backend marks it
+// `isHtml: true`. This app runs in Electron with the renderer able to
+// `window.require('electron')`, so unsanitized HTML in that path is a real
+// remote-code-execution risk if any command output ever contains untrusted
+// content (a fetched web page, a file's contents, etc). This strips the
+// dangerous bits (script tags, inline event handlers, javascript:/data:
+// URLs) before they ever reach dangerouslySetInnerHTML.
+//
+// This is a stop-gap, not a substitute for a real sanitizer - prefer
+// swapping this out for DOMPurify (`npm install dompurify`) when the
+// project has network access to install it.
+const sanitizeHtml = (html) => {
+    if (typeof html !== 'string') return '';
+    const template = document.createElement('template');
+    template.innerHTML = html;
+
+    const walk = (node) => {
+        // Snapshot children first - we may remove/mutate nodes as we go.
+        Array.from(node.childNodes).forEach((child) => {
+            if (child.nodeType === Node.ELEMENT_NODE) {
+                const tag = child.tagName.toLowerCase();
+                if (tag === 'script' || tag === 'iframe' || tag === 'object' || tag === 'embed' || tag === 'link' || tag === 'style') {
+                    child.remove();
+                    return;
+                }
+                Array.from(child.attributes).forEach((attr) => {
+                    const name = attr.name.toLowerCase();
+                    const value = attr.value.trim().toLowerCase();
+                    if (name.startsWith('on')) {
+                        child.removeAttribute(attr.name);
+                    } else if ((name === 'href' || name === 'src') && (value.startsWith('javascript:') || value.startsWith('data:text/html'))) {
+                        child.removeAttribute(attr.name);
+                    }
+                });
+                walk(child);
+            }
+        });
+    };
+    walk(template.content);
+    return template.innerHTML;
+};
+
 const CmdWindow = ({ socket, onClose }) => {
     const [input, setInput] = useState('');
     const [history, setHistory] = useState([]);
@@ -208,7 +250,7 @@ const CmdWindow = ({ socket, onClose }) => {
                                 {entry.isHtml ? (
                                     <div 
                                         className="break-words overflow-hidden"
-                                        dangerouslySetInnerHTML={{ __html: entry.text }} 
+                                        dangerouslySetInnerHTML={{ __html: sanitizeHtml(entry.text) }} 
                                     />
                                 ) : (
                                     <pre className="font-mono whitespace-pre-wrap break-all overflow-hidden">

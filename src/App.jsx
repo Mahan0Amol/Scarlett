@@ -8,21 +8,32 @@ import ToolsModule from './components/ToolsModule';
 import CmdWindow from './components/CmdWindow';
 import AuthLock from './components/AuthLock';
 import SettingsWindow from './components/SettingsWindow';
+import ConfirmationPopup from './components/ConfirmationPopup';
 
 // Import Plugin Registry
-import { UI_PLUGINS } from './pluginRegistry';
+import { UI_PLUGINS, PLUGIN_META, DEFAULT_TOOLBAR_PLUGINS, MAX_TOOLBAR_PLUGINS } from './pluginRegistry';
 
 import { Mic, MicOff, Settings, X, Minus, Power, Video, VideoOff, Hand, Printer, Clock } from 'lucide-react';
 import { FilesetResolver, HandLandmarker } from '@mediapipe/tasks-vision';
 
-const socket = io('http://localhost:8000');
+// Was hardcoded to localhost:8000 - now overridable per-build/per-machine
+// via VITE_BACKEND_URL, falling back to the old default so nothing breaks
+// for anyone who hasn't set it up.
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
+const socket = io(BACKEND_URL);
 const { ipcRenderer } = window.require('electron');
 
 function App() {
     const [status, setStatus] = useState('Disconnected');
     const [socketConnected, setSocketConnected] = useState(socket.connected);
-    const [isAuthenticated, setIsAuthenticated] = useState(() => localStorage.getItem('face_auth_enabled') !== 'true');
-    const [isLockScreenVisible, setIsLockScreenVisible] = useState(() => localStorage.getItem('face_auth_enabled') === 'true');
+    // Secure-by-default: we used to trust a locally-editable localStorage
+    // flag to decide whether to even show the lock screen, which meant
+    // anyone with devtools access could set `face_auth_enabled` to "false"
+    // and skip the face-auth check entirely. Now the lock screen is shown
+    // by default and can only be dismissed once the backend explicitly
+    // confirms (via 'settings' or 'auth_status') that access is allowed.
+    const [isAuthenticated, setIsAuthenticated] = useState(false);
+    const [isLockScreenVisible, setIsLockScreenVisible] = useState(true);
     const [faceAuthEnabled, setFaceAuthEnabled] = useState(() => localStorage.getItem('face_auth_enabled') === 'true');
 
     const [isConnected, setIsConnected] = useState(true);
@@ -49,6 +60,31 @@ function App() {
 
     // ====================== state جدید برای مدیریت پلاگین‌ها ======================
     const [activeWindows, setActiveWindows] = useState({});
+
+    // Which plugins the user has pinned to the toolbar (max MAX_TOOLBAR_PLUGINS).
+    // Persisted locally so the choice survives restarts; configurable from
+    // SettingsWindow's "Toolbar Shortcuts" picker. Falls back to the same
+    // 5 plugins the toolbar used to hardcode, so default behavior is unchanged.
+    const [toolbarPluginIds, setToolbarPluginIds] = useState(() => {
+        try {
+            const saved = JSON.parse(localStorage.getItem('toolbar_plugins'));
+            if (Array.isArray(saved) && saved.length > 0) {
+                return saved.filter(id => UI_PLUGINS[id]).slice(0, MAX_TOOLBAR_PLUGINS);
+            }
+        } catch (e) { /* ignore malformed localStorage value */ }
+        return DEFAULT_TOOLBAR_PLUGINS;
+    });
+
+    useEffect(() => {
+        localStorage.setItem('toolbar_plugins', JSON.stringify(toolbarPluginIds));
+    }, [toolbarPluginIds]);
+
+    const toolbarPluginMeta = PLUGIN_META.filter(p => toolbarPluginIds.includes(p.id));
+
+    // Pending tool-execution authorization requested by the backend. Shown
+    // via <ConfirmationPopup>; the user must explicitly approve or deny it -
+    // previously this was auto-confirmed without ever asking the user.
+    const [pendingToolConfirmation, setPendingToolConfirmation] = useState(null);
     
     const [isModularMode, setIsModularMode] = useState(false);
     const [elementPositions, setElementPositions] = useState({
@@ -101,6 +137,7 @@ function App() {
     const [cursorSensitivity, setCursorSensitivity] = useState(2.0);
     const [isCameraFlipped, setIsCameraFlipped] = useState(false);
     const hasAutoConnectedRef = useRef(false);
+    const hasClosedRef = useRef(false);
 
     useEffect(() => {
         elementPositionsRef.current = elementPositions;
@@ -168,6 +205,18 @@ function App() {
 
     const updateWindowData = (pluginName, data) => {
         setActiveWindows(prev => ({ ...prev, [pluginName]: { ...prev[pluginName], ...data } }));
+    };
+
+    // Generic open/close toggle used by the toolbar's plugin buttons. Works
+    // for any plugin id in UI_PLUGINS - the toolbar no longer needs a
+    // dedicated onToggleX/showXWindow prop pair per plugin. Reuses
+    // openWindow/closeWindow so positioning & z-index stacking stay correct.
+    const togglePlugin = (pluginName) => {
+        if (activeWindows[pluginName] !== undefined) {
+            closeWindow(pluginName);
+        } else {
+            openWindow(pluginName);
+        }
     };
 
     const getZIndex = (id) => {
@@ -314,6 +363,14 @@ function App() {
             if (typeof settings.cursor_sensitivity !== 'undefined') {
                 setCursorSensitivity(settings.cursor_sensitivity);
             }
+
+            // Only the backend gets to say "no auth needed" - this is what
+            // actually dismisses the lock screen when face auth is off,
+            // instead of trusting a client-editable localStorage flag.
+            if (settings.face_auth_enabled === false) {
+                setIsAuthenticated(true);
+                setIsLockScreenVisible(false);
+            }
             // Device matching moved to a separate useEffect (see pendingDeviceSettings)
             // to avoid a stale closure over micDevices/speakerDevices/webcamDevices.
             setPendingDeviceSettings(settings);
@@ -345,8 +402,13 @@ function App() {
                 else return [...prev, { sender: data.sender, text: data.text, time: new Date().toLocaleTimeString() }];
             });
         });
-        socket.on('tool_confirmation_request', (data) => socket.emit('confirm_tool', { id: data.id, confirmed: true }));
+        // Used to auto-confirm every tool call without asking - meaning the
+        // AI could execute anything (open doors, run terminal commands, ...)
+        // with no human in the loop. Now it just queues the request and
+        // <ConfirmationPopup> asks the user to explicitly approve or deny it.
+        socket.on('tool_confirmation_request', (data) => setPendingToolConfirmation(data));
         socket.on('project_update', (data) => { setCurrentProject(data.project); addMessage('System', `Switched to project: ${data.project}`); });
+        socket.on('memory_saved', () => finishClose());
 
         navigator.mediaDevices.enumerateDevices().then(devs => {
             const audioInputs = devs.filter(d => d.kind === 'audioinput');
@@ -387,7 +449,7 @@ function App() {
             socket.off('plugin_update'); socket.off('open_music_window'); socket.off('open_chess_window');
             socket.off('request_print_window'); socket.off('cad_data'); socket.off('cad_thought'); socket.off('cad_status');
             socket.off('browser_frame'); socket.off('transcription'); socket.off('tool_confirmation_request');
-            socket.off('project_update');
+            socket.off('project_update'); socket.off('memory_saved');
             stopMicVisualizer(); stopVideo();
         };
     }, []);
@@ -433,12 +495,50 @@ function App() {
 
     const handleMinimize = () => ipcRenderer.send('window-minimize');
     const handleMaximize = () => ipcRenderer.send('window-maximize');
-    const handleCloseRequest = () => {
-        const closeWindow = () => ipcRenderer.send('window-close');
+
+    // Actually tears the window down. Split out from handleCloseRequest so
+    // it can run either immediately (user said "no, just exit") or after
+    // the backend confirms the memory save finished.
+    const finishClose = () => {
+        if (hasClosedRef.current) return;
+        hasClosedRef.current = true;
+        const doClose = () => ipcRenderer.send('window-close');
         if (socket.connected) {
-            socket.emit('shutdown', {}, (ack) => closeWindow());
-            setTimeout(closeWindow, 500);
-        } else { closeWindow(); }
+            socket.emit('shutdown', {}, (ack) => doClose());
+            setTimeout(doClose, 500);
+        } else {
+            doClose();
+        }
+    };
+
+    // Clicking the window's close button now asks whether to save this
+    // conversation to long-term memory first (MemoryPrompt existed in the
+    // codebase already but was never actually rendered/wired up).
+    const handleCloseRequest = () => finishClose();
+
+    // Resolves a pending <ConfirmationPopup> authorization request - the
+    // user's explicit choice, replacing the old auto-confirm-everything logic.
+    const resolveToolConfirmation = (confirmed) => {
+        if (!pendingToolConfirmation) return;
+        socket.emit('confirm_tool', { id: pendingToolConfirmation.id, confirmed });
+        setPendingToolConfirmation(null);
+    };
+
+    // Reads a .txt file selected in SettingsWindow and sends its contents to
+    // the backend as memory context. Previously this prop was referenced by
+    // SettingsWindow but never actually passed down, so the upload input did
+    // nothing when used.
+    const handleFileUpload = (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+            socket.emit('upload_memory_file', { filename: file.name, content: reader.result });
+            addMessage('System', `Uploaded memory file: ${file.name}`);
+        };
+        reader.onerror = () => addMessage('System', `Failed to read file: ${file.name}`);
+        reader.readAsText(file);
+        e.target.value = '';
     };
 
     const handleMouseDown = (e, id) => {
@@ -504,6 +604,14 @@ function App() {
                 <AuthLock socket={socket} onAuthenticated={() => setIsAuthenticated(true)} onAnimationComplete={() => setIsLockScreenVisible(false)} />
             )}
 
+            {pendingToolConfirmation && (
+                <ConfirmationPopup
+                    request={pendingToolConfirmation}
+                    onConfirm={() => resolveToolConfirmation(true)}
+                    onDeny={() => resolveToolConfirmation(false)}
+                />
+            )}
+
             {isVideoOn && isHandTrackingEnabled && (
                 <div className={`fixed w-6 h-6 border-2 rounded-full pointer-events-none z-[100] transition-transform duration-75 ${isPinching ? 'bg-red-400 border-red-400 scale-75' : 'border-red-400'}`} style={{ left: cursorPos.x, top: cursorPos.y, transform: 'translate(-50%, -50%)' }}>
                     <div className="absolute top-1/2 left-1/2 w-1 h-1 bg-white rounded-full -translate-x-1/2 -translate-y-1/2" />
@@ -557,6 +665,8 @@ function App() {
                         selectedWebcamId={selectedWebcamId} setSelectedWebcamId={setSelectedWebcamId}
                         cursorSensitivity={cursorSensitivity} setCursorSensitivity={setCursorSensitivity}
                         isCameraFlipped={isCameraFlipped} setIsCameraFlipped={setIsCameraFlipped}
+                        handleFileUpload={handleFileUpload}
+                        toolbarPluginIds={toolbarPluginIds} setToolbarPluginIds={setToolbarPluginIds}
                         onClose={() => setShowSettings(false)}
                     />
                 )}
@@ -574,6 +684,9 @@ function App() {
                         isHandTrackingEnabled={isHandTrackingEnabled} showSettings={showSettings}
                         onTogglePower={togglePower} onToggleMute={toggleMute} onToggleVideo={toggleVideo}
                         onToggleSettings={() => setShowSettings(!showSettings)} onToggleHand={() => setIsHandTrackingEnabled(!isHandTrackingEnabled)}
+                        toolbarPlugins={toolbarPluginMeta}
+                        openPluginIds={Object.keys(activeWindows)}
+                        onTogglePlugin={togglePlugin}
                         activeDragElement={activeDragElement} position={elementPositions.tools}
                         onMouseDown={(e) => handleMouseDown(e, 'tools')}
                     />
