@@ -8,11 +8,10 @@ venv/
 .venv/
 env/
 tests/
-requirements.txt
+
 
 # Scarlett Specific Local Data
 backend/reference.jpg
-backend/settings.json
 backend/last_cad_generation.json
 long_term_memory/
 projects/
@@ -44,7 +43,5 @@ Thumbs.db
 cad_test_output
 src.zip
 Scarlett.zip
-items.json
-backend/items.json
 settings.json
 backend/plugins/email/token.json
