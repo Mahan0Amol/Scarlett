@@ -215,6 +215,142 @@ This repo was extracted directly from a working personal setup. Before you push 
 - [ ] Add a proper **`.gitignore`** (`.env`, `venv/`, `node_modules/`, `*.token.json`, `credentials.json`, `settings.json`, `reference.jpg`, `__pycache__/`, build output).
 - [ ] Confirm `electron/main.js`, `index.html`, `vite.config.js`, and `tailwind.config.js` are actually committed alongside `package.json` and `requirements.txt` — none of those four were part of what was reviewed while writing this README.
 
+## 🔐 Google OAuth Setup (Gmail)
+
+To use Scarlett's Gmail features, you need to create your own Google OAuth credentials.
+
+### 1. Create a Google Cloud Project
+
+Go to the [Google Cloud Console](https://console.cloud.google.com/) and create a new project.
+
+You can name it anything you want, for example:
+
+```text
+Scarlett Gmail
+```
+
+### 2. Enable the Gmail API
+
+In your Google Cloud project:
+
+1. Open **APIs & Services → Library**
+2. Search for **Gmail API**
+3. Open it
+4. Click **Enable**
+
+### 3. Configure OAuth Consent Screen
+
+Go to:
+
+**Google Auth Platform → Branding**
+
+Set the application name, for example:
+
+```text
+Scarlett
+```
+
+Then configure the required contact information.
+
+For **Audience**, select:
+
+```text
+External
+```
+
+> If your Google account is part of a Google Workspace organization and Scarlett is only for users in that organization, you may use **Internal** instead.
+
+### 4. Add Gmail Permissions
+
+Go to:
+
+**Google Auth Platform → Data Access**
+
+Add the Gmail scopes required by Scarlett:
+
+```text
+https://www.googleapis.com/auth/gmail.readonly
+https://www.googleapis.com/auth/gmail.send
+https://www.googleapis.com/auth/gmail.modify
+```
+
+These permissions allow Scarlett to:
+
+* 📥 Read emails
+* 📤 Send emails
+* 🗑️ Modify/delete emails
+
+### 5. Create an OAuth Client
+
+Go to:
+
+**Google Auth Platform → Clients**
+
+Click:
+
+**+ Create Client**
+
+For **Application type**, select:
+
+```text
+Desktop app
+```
+
+Give it a name such as:
+
+```text
+Scarlett Gmail
+```
+
+Click **Create**.
+
+### 6. Download `credentials.json`
+
+After creating the OAuth client, download the generated JSON file.
+
+Rename it to:
+
+```text
+credentials.json
+```
+
+Then place it inside Scarlett's email plugin directory:
+
+```text
+Scarlett/
+└── backend/
+    └── plugins/
+        └── email/
+            ├── credentials.json
+            └── ...
+```
+
+### 7. Start Scarlett
+
+Run Scarlett normally.
+
+The first time you use a Gmail feature, Scarlett will open a Google authentication page in your browser.
+
+Sign in with your Google account and grant the requested permissions.
+
+After authorization, Scarlett will store your OAuth token locally and reuse it for future sessions.
+
+### ⚠️ Security
+
+**Never upload your ****`credentials.json`**** or ****`token.json`**** to GitHub.**
+
+These files contain authentication information and should remain local to your Scarlett installation.
+
+Make sure they are listed in your `.gitignore`:
+
+```gitignore
+**/credentials.json
+**/token.json
+```
+
+Each Scarlett installation should use its own Google OAuth credentials.
+
+
 ## Credits
 
 This project began as a fork/extension of an earlier MIT-licensed assistant project by Nazir Louis. The original repository isn't linked here (link not currently available) — see [`LICENSE`](LICENSE) for the preserved original copyright notice.
