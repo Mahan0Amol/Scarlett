@@ -45,4 +45,5 @@ src.zip
 Scarlett.zip
 settings.json
 backend/plugins/email/token.json
+backend/plugins/email/credentials.json
 miniconda.exe
