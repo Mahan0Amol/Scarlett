@@ -122,7 +122,7 @@ Go to full settings window and add these from .env section
 
 | Variable | Purpose |
 |---|---|
-| `GEMINI_API_KEY` | Google Gemini API key (Live API access) |
+| `GEMINI_API_KEY` | Google Gemini API key |
 | `OPENWEATHER_API_KEY` | Weather lookups |
 | `EMAIL_ADDRESS` | SMTP sending account (use an app password, not your real password) |
 | `EMAIL_IMAP` / `EMAIL_IMAP_PORT` | IMAP server for reading mail |
