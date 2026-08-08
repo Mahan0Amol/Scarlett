@@ -8,7 +8,7 @@ Scarlett runs as a small **Electron desktop app** (React frontend) talking to a 
 
 > ⚠️ **This is a personal project, published as-is.** It's built around one person's setup (their PC, their printer, their smart home devices). See [Before You Publish / Run This Yourself](#before-you-run-this-yourself) for what you'll need to change.
 
-![demo placeholder](docs/demo.gif)
+![demo placeholder](docs/demo.png)
 *(demo GIF / screenshots go here)*
 
 ---
@@ -27,6 +27,8 @@ Scarlett runs as a small **Electron desktop app** (React frontend) talking to a 
 - [Project Structure](#project-structure)
 - [Writing Your Own Plugin](#writing-your-own-plugin)
 - [Before You Run This Yourself](#before-you-run-this-yourself)
+- [Note](#note)
+- [Contributing](#contributing)
 - [License](#license)
 
 ---
@@ -202,9 +204,8 @@ Restart the backend — that's it. `loader.py` picks it up automatically, `Scarl
 
 This repo was extracted directly from a working personal setup. Before you push it publicly or hand it to someone else, go through this list:
 
-- [ ] **`backend/.env`** — contains real API keys and an email app password. Never commit this; add it to `.gitignore` and ship a `.env.example` with empty values instead.
-- [ ] **`backend/reference.jpg`** — the face-auth reference photo. Remove it (and don't commit a real one) unless you specifically want your face in the repo.
-- [ ] **`backend/plugins/email/credentials.json` and `token.json`** — Google OAuth credentials/tokens for the email plugin. Never commit these.
+
+- [ ] **`backend/plugins/email/token.json`** — Google OAuth credentials/tokens for the email plugin. Never commit these.
 - [ ] **`backend/settings.json`** — contains real device info (printer name/IP, selected mic/webcam). Fine to keep structurally, but scrub personal identifiers or ship a `settings.example.json` instead and gitignore the real one.
 - [ ] Add a proper **`.gitignore`** (`.env`, `venv/`, `node_modules/`, `*.token.json`, `credentials.json`, `settings.json`, `reference.jpg`, `__pycache__/`, build output).
 - [ ] Confirm `electron/main.js`, `index.html`, `vite.config.js`, and `tailwind.config.js` are actually committed alongside `package.json` and `requirements.txt` — none of those four were part of what was reviewed while writing this README.
@@ -216,10 +217,34 @@ This project began as a fork/extension of an earlier MIT-licensed assistant proj
 ## Note
 
 This project is not compelete yet and I am working on it.
-If you found a bug in this project or just need some help please let me know:
+If you found a bug in this project or just need some help please let me know.
+This project only tested on Windows but of someone wanted to add other OS version please let me know.
 ```
 mahanbiabani12@gmail.com
 ```
+
+## Contributing
+
+Contributions are welcome! Here's how:
+
+1. **Fork** the repository.
+2. **Create a branch**:
+
+   ```bash
+   git checkout -b feature/amazing-feature
+   ```
+3. **Commit** your changes:
+
+   ```bash
+   git commit -m "Add amazing feature"
+   ```
+4. **Push** to the branch:
+
+   ```bash
+   git push origin feature/amazing-feature
+   ```
+5. **Open a Pull Request** with a clear description.
+
 
 ## License
 

@@ -18,6 +18,7 @@ long_term_memory/
 projects/
 output.stl
 cad_outputs/
+screenshots/
 
 # Node.js
 node_modules/
