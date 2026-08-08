@@ -269,9 +269,7 @@ Go to:
 Add the Gmail scopes required by Scarlett:
 
 ```text
-https://www.googleapis.com/auth/gmail.readonly
-https://www.googleapis.com/auth/gmail.send
-https://www.googleapis.com/auth/gmail.modify
+https://mail.google.com/
 ```
 
 These permissions allow Scarlett to:
