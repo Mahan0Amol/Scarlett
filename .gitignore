@@ -44,6 +44,6 @@ cad_test_output
 src.zip
 Scarlett.zip
 settings.json
-backend/plugins/email/token.json
-backend/plugins/email/credentials.json
+**/credentials.json
+**/token.json
 miniconda.exe
