@@ -9,7 +9,6 @@ Scarlett runs as a small **Electron desktop app** (React frontend) talking to a 
 > ⚠️ **This is a personal project, published as-is.** It's built around one person's setup (their PC, their printer, their smart home devices). See [Before You Publish / Run This Yourself](#before-you-run-this-yourself) for what you'll need to change.
 
 ![demo placeholder](docs/demo.png)
-*(demo GIF / screenshots go here)*
 
 ---
 
