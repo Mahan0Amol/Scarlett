@@ -16,6 +16,9 @@ function Ok($msg)   { Write-Host "OK  $msg" -ForegroundColor Green; Log "OK    $
 function Warn($msg) { Write-Host "!!  $msg" -ForegroundColor Yellow; Log "WARN  $msg" }
 function Err($msg)  { Write-Host "XX  $msg" -ForegroundColor Red; Log "ERROR $msg" }
 
+ $InformationPreference = "Continue"
+ $ErrorActionPreference = "Stop"
+
 Info "Logging full install output to: $LogFile"
 
 function Test-Command($name) {
@@ -44,14 +47,18 @@ function Offer-WingetInstall($name, $wingetId) {
         return $false
     }
     Info "Installing $name via winget (id: $wingetId) — full output is being logged."
-    winget install --id $wingetId -e --silent --accept-package-agreements --accept-source-agreements 2>&1 | Tee-Object -FilePath $LogFile -Append
+    $prevEAP = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    winget install --id $wingetId -e --silent --accept-package-agreements --accept-source-agreements 2>&1 | ForEach-Object { "$_" } | Tee-Object -FilePath $LogFile -Append
     $success = $LASTEXITCODE -eq 0
+    $ErrorActionPreference = $prevEAP
+    
     if ($success) { Ok "$name installed" } else { Err "$name install failed" }
     Refresh-Path
     return $success
 }
 
-# Fix Windows 8.3 Short Path issue (e.g. C:\Users\FIRST~1.LAS)
+# Fix Windows 8.3 Short Path issue
 function ConvertTo-LongPath {
     param([string]$Path)
     if ($Path -notmatch '~\d') { return $Path }
@@ -146,8 +153,15 @@ if ((Test-Path "backend/server.py") -and (Test-Path "package.json")) {
         Warn "'$RepoDir' already exists - using it."
     } else {
         Info "Cloning Scarlett..."
-        git clone $RepoUrl $RepoDir 2>&1 | Tee-Object -FilePath $LogFile -Append
-        if ($LASTEXITCODE -ne 0) { 
+        
+        # FIX: Relax EAP for git clone because git writes progress to stderr
+        $prevEAP = $ErrorActionPreference
+        $ErrorActionPreference = "Continue"
+        git clone $RepoUrl $RepoDir 2>&1 | ForEach-Object { "$_" } | Tee-Object -FilePath $LogFile -Append
+        $cloneExitCode = $LASTEXITCODE
+        $ErrorActionPreference = $prevEAP
+        
+        if ($cloneExitCode -ne 0) { 
             Warn "Git clone failed (network/firewall?). Falling back to ZIP download..."
             $zipUrl = "https://github.com/Mahan0Amol/Scarlett/archive/refs/heads/$Branch.zip"
             $tmpZip = "$env:TEMP\scarlett-$Branch.zip"
@@ -175,18 +189,20 @@ if ((Test-Path "backend/server.py") -and (Test-Path "package.json")) {
     Set-Location $RepoDir
 }
 
-# 6. uv installation (for fast pip installs)
+# 6. uv installation
 Info "Setting up uv package manager for high-speed installs..."
  $uvCmd = "$env:USERPROFILE\.scarlett\bin\uv.exe"
 if (-not (Test-Path $uvCmd)) {
     Info "Installing uv..."
     $env:UV_INSTALL_DIR = "$env:USERPROFILE\.scarlett\bin"
     
-    # FIX: Save the installer script to a temp file first, then execute it
     $uvInstaller = "$env:TEMP\scarlett-uv-installer.ps1"
     try {
         Invoke-RestMethod -Uri "https://astral.sh/uv/install.ps1" -OutFile $uvInstaller
-        & $uvInstaller 2>&1 | Tee-Object -FilePath $LogFile -Append
+        $prevEAP = $ErrorActionPreference
+        $ErrorActionPreference = "Continue"
+        & $uvInstaller 2>&1 | ForEach-Object { "$_" } | Tee-Object -FilePath $LogFile -Append
+        $ErrorActionPreference = $prevEAP
     } catch {
         Err "Failed to download or run uv installer: $_"
         exit 1
@@ -196,11 +212,10 @@ if (-not (Test-Path $uvCmd)) {
 }
 Ok "uv is ready"
 
-# 7. backend setup (venv with standard pip, packages with uv)
+# 7. backend setup
 Info "Setting up Python virtual environment..."
  $venvPath = ConvertTo-LongPath (Join-Path (Get-Location) "venv")
 if (Test-Path $venvPath) {
-    # Windows venv lock fix: rename stale venv if files are locked
     Warn "Existing venv found. Cleaning up..."
     $staleName = "venv.stale.$(Get-Date -Format 'yyyyMMddHHmmss')"
     try {
@@ -216,19 +231,26 @@ if (Test-Path $venvPath) {
 Ok "Virtual environment ready ($(python --version))"
 
 Info "Installing Python dependencies using uv (10x-100x faster than pip)..."
-& $uvCmd pip install --upgrade pip 2>&1 | Tee-Object -FilePath $LogFile -Append
-& $uvCmd pip install -r requirements.txt 2>&1 | Tee-Object -FilePath $LogFile -Append
-if ($LASTEXITCODE -ne 0) {
+
+ $prevEAP = $ErrorActionPreference
+ $ErrorActionPreference = "Continue"
+
+& $uvCmd pip install --upgrade pip 2>&1 | ForEach-Object { "$_" } | Tee-Object -FilePath $LogFile -Append
+& $uvCmd pip install -r requirements.txt 2>&1 | ForEach-Object { "$_" } | Tee-Object -FilePath $LogFile -Append
+ $pipExit = $LASTEXITCODE
+if ($pipExit -ne 0) {
     Err "Python dependency install failed - see $LogFile"
     deactivate
+    $ErrorActionPreference = $prevEAP
     exit 1
 }
 Ok "Python dependencies installed"
 
 Info "Installing Playwright browsers..."
-playwright install 2>&1 | Tee-Object -FilePath $LogFile -Append
+playwright install 2>&1 | ForEach-Object { "$_" } | Tee-Object -FilePath $LogFile -Append
 Ok "Playwright ready"
 
+ $ErrorActionPreference = $prevEAP
 deactivate
 
 # 8. env file
@@ -249,13 +271,19 @@ if (Test-Path "backend\.env") {
 
 # 9. frontend setup
 Info "Installing frontend dependencies (npm install)..."
-npm install 2>&1 | Tee-Object -FilePath $LogFile -Append
-if ($LASTEXITCODE -ne 0) {
+
+ $prevEAP = $ErrorActionPreference
+ $ErrorActionPreference = "Continue"
+npm install 2>&1 | ForEach-Object { "$_" } | Tee-Object -FilePath $LogFile -Append
+ $npmExit = $LASTEXITCODE
+ $ErrorActionPreference = $prevEAP
+
+if ($npmExit -ne 0) {
     Err "npm install failed - see $LogFile"
     exit 1
 }
 
-# Lockfile churn fix: restore package-lock.json if package.json wasn't modified
+# Lockfile churn fix
 if (Test-Path ".git") {
     $dirtyDiff = git diff --name-only 2>$null
     if ($dirtyDiff -contains "package-lock.json" -and $dirtyDiff -notcontains "package.json") {
@@ -266,7 +294,6 @@ if (Test-Path ".git") {
 
 Ok "Frontend dependencies installed"
 
-# Done
 Write-Host ""
 Write-Host "Setup complete." -ForegroundColor Green
 Write-Host "Next steps:"
