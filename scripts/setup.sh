@@ -286,7 +286,25 @@ else
     fi
 fi
 
-# ---- 5. uv (fast Python package installer) --------------------------------------
+#--- 5. libnss3 ----------------------------------------------------------------
+step "libnss3 (required by Playwright/Chromium)"
+if ldconfig -p 2>/dev/null | grep -q 'libnss3\.so'; then
+    ok "libnss3 found"
+else
+    if offer_install "libnss3" "" apt:libnss3 dnf:nss yum:nss pacman:nss zypper:mozilla-nss brew:nss; then
+        if ldconfig -p 2>/dev/null | grep -q 'libnss3\.so'; then
+            ok "libnss3 installed"
+        else
+            warn "Install command finished, but libnss3 still couldn't be verified."
+            warn "Playwright's Chromium browser may fail to launch."
+        fi
+    else
+        warn "Continuing without libnss3 — Playwright's Chromium browser may fail to launch."
+        warn "Install it later via your package manager (e.g. sudo apt install libnss3)."
+    fi
+fi
+
+# ---- 6. uv (fast Python package installer) --------------------------------------
 step "uv (Python package installer)"
 UV_CMD=""
 find_uv() {
@@ -325,7 +343,7 @@ else
     ok "uv installed ($($UV_CMD --version))"
 fi
 
-# ---- 6. clone repo (skip if already inside it) -----------------------------------
+# ---- 7. clone repo (skip if already inside it) -----------------------------------
 step "Scarlett repository"
 if [ -f "backend/server.py" ] && [ -f "package.json" ]; then
     ok "Already inside the Scarlett repo — skipping clone."
@@ -344,7 +362,7 @@ else
     cd "$REPO_DIR"
 fi
 
-# ---- 7. portaudio (needed to build pyaudio) --------------------------------------
+# ---- 8. portaudio (needed to build pyaudio) --------------------------------------
 step "portaudio (build dependency for pyaudio)"
 if [ "$CURRENT_OS" = "macos" ]; then
     if have brew && brew list portaudio >/dev/null 2>&1; then
@@ -376,7 +394,7 @@ else
     info "Nothing to do for this OS/package manager."
 fi
 
-# ---- 8. virtual environment -------------------------------------------------------
+# ---- 9. virtual environment -------------------------------------------------------
 step "Python virtual environment"
 VENV_PY="venv/bin/python"
 if [ -d "venv" ]; then
@@ -397,7 +415,7 @@ else
     ok "Virtual environment ready ($($VENV_PY --version))"
 fi
 
-# ---- 9. python dependencies (installed with uv, into the venv above) -------------
+# ---- 10. python dependencies (installed with uv, into the venv above) -------------
 step "Python dependencies"
 require_confirm "Install Python dependencies from requirements.txt (via uv)?"
 info "Installing Python dependencies — this can take a few minutes."
@@ -416,7 +434,7 @@ AFTER_PY_PKGS=$("$UV_CMD" pip list --python "$VENV_PY" 2>/dev/null || true)
 } >> "$LOG_FILE"
 ok "Python dependencies installed — full list in $LOG_FILE"
 
-# ---- 10. playwright browsers -------------------------------------------------------
+# ---- 11. playwright browsers -------------------------------------------------------
 step "Playwright browsers"
 if confirm "Install Playwright browser binaries (needed for browser automation features)?" "yes"; then
     info "Installing Playwright browsers..."
@@ -438,7 +456,7 @@ else
     warn "  $VENV_PY -m playwright install"
 fi
 
-# ---- 11. env file --------------------------------------------------------------------
+# ---- 12. env file --------------------------------------------------------------------
 step ".env configuration"
 if [ -f "backend/.env" ]; then
     ok "backend/.env already exists — leaving it untouched"
@@ -471,7 +489,7 @@ fi
 # API keys live in this file — keep it readable only by you.
 chmod 600 backend/.env 2>/dev/null || true
 
-# ---- 12. frontend setup ----------------------------------------------------------------
+# ---- 13. frontend setup ----------------------------------------------------------------
 step "Frontend dependencies"
 require_confirm "Install frontend dependencies (npm install)?"
 info "Installing frontend dependencies — full output is being logged."
