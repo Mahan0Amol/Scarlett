@@ -59,17 +59,17 @@ function Invoke-Logged {
     $prevEAP = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
 
-    $output = & $Command @Arguments 2>&1 | ForEach-Object { $_.ToString() }
+    # Stream each line to the console and the log file as it arrives,
+    # instead of buffering into a variable (which would only show output
+    # after the whole command finishes).
+    & $Command @Arguments 2>&1 | ForEach-Object {
+        $line = $_.ToString()
+        $line | Out-File -FilePath $LogFile -Append -Encoding utf8
+        if (-not $Quiet) { Write-Host $line }
+    }
     $exitCode = $LASTEXITCODE
 
     $ErrorActionPreference = $prevEAP
-
-    if ($output) {
-        $output | Out-File -FilePath $LogFile -Append -Encoding utf8
-        if (-not $Quiet) {
-            $output | ForEach-Object { Write-Host $_ }
-        }
-    }
 
     return $exitCode
 }
@@ -276,16 +276,15 @@ if ($found) {
         # The astral install script writes normal progress/info lines to
         # stderr. Relax $ErrorActionPreference while it runs so those
         # lines aren't treated as terminating errors (same issue as the
-        # other external tools below).
+        # other external tools below), and stream each line as it arrives.
         $prevEAP = $ErrorActionPreference
         $ErrorActionPreference = "Continue"
-        $installOutput = Invoke-Expression $installScript 2>&1 | ForEach-Object { $_.ToString() }
-        $ErrorActionPreference = $prevEAP
-
-        if ($installOutput) {
-            $installOutput | Out-File -FilePath $LogFile -Append -Encoding utf8
-            $installOutput | ForEach-Object { Write-Host $_ }
+        Invoke-Expression $installScript 2>&1 | ForEach-Object {
+            $line = $_.ToString()
+            $line | Out-File -FilePath $LogFile -Append -Encoding utf8
+            Write-Host $line
         }
+        $ErrorActionPreference = $prevEAP
     } catch {
         Err "uv installer failed: $_"
         exit 1
