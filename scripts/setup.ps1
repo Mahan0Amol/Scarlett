@@ -1,11 +1,5 @@
 # Scarlett setup script (Windows / PowerShell)
 # Enhanced with Hermes-Agent features (uv, ffmpeg, zip fallback, lockfile churn fix)
-#
-# Usage (remote install):
-#   irm https://raw.githubusercontent.com/Mahan0Amol/Scarlett/main/scripts/setup.ps1 | iex
-#
-# Usage (local, already cloned):
-#   .\scripts\setup.ps1
 
  $RepoUrl = "https://github.com/Mahan0Amol/Scarlett.git"
  $RepoDir = "Scarlett"
@@ -187,8 +181,18 @@ Info "Setting up uv package manager for high-speed installs..."
 if (-not (Test-Path $uvCmd)) {
     Info "Installing uv..."
     $env:UV_INSTALL_DIR = "$env:USERPROFILE\.scarlett\bin"
-    $installScript = irm https://astral.sh/uv/install.ps1
-    & $installScript 2>&1 | Tee-Object -FilePath $LogFile -Append
+    
+    # FIX: Save the installer script to a temp file first, then execute it
+    $uvInstaller = "$env:TEMP\scarlett-uv-installer.ps1"
+    try {
+        Invoke-RestMethod -Uri "https://astral.sh/uv/install.ps1" -OutFile $uvInstaller
+        & $uvInstaller 2>&1 | Tee-Object -FilePath $LogFile -Append
+    } catch {
+        Err "Failed to download or run uv installer: $_"
+        exit 1
+    } finally {
+        Remove-Item $uvInstaller -Force -ErrorAction SilentlyContinue
+    }
 }
 Ok "uv is ready"
 
