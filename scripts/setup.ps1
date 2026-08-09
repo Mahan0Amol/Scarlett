@@ -43,6 +43,37 @@ function Ok($msg)   { Write-Host "  $script:SymOk $msg" -ForegroundColor Green; 
 function Warn($msg) { Write-Host "  $script:SymWarn $msg" -ForegroundColor Yellow; Log "WARN  $msg" }
 function Err($msg)  { Write-Host "  $script:SymCross $msg" -ForegroundColor Red; Log "ERROR $msg" }
 
+# Runs a native command (exe + args) without letting $ErrorActionPreference =
+# "Stop" turn its normal stderr output (progress messages, version banners,
+# npm/uv warnings, etc.) into a terminating error. Merges stdout+stderr,
+# writes everything to the log file, optionally echoes it to the console,
+# and returns the process's real exit code (from $LASTEXITCODE) instead of
+# throwing. Use this for every external tool invocation whose output gets
+# piped/merged - that's the pattern that was silently aborting the script.
+function Invoke-Logged {
+    param(
+        [Parameter(Mandatory)][string]$Command,
+        [string[]]$Arguments = @(),
+        [switch]$Quiet
+    )
+    $prevEAP = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+
+    $output = & $Command @Arguments 2>&1 | ForEach-Object { $_.ToString() }
+    $exitCode = $LASTEXITCODE
+
+    $ErrorActionPreference = $prevEAP
+
+    if ($output) {
+        $output | Out-File -FilePath $LogFile -Append -Encoding utf8
+        if (-not $Quiet) {
+            $output | ForEach-Object { Write-Host $_ }
+        }
+    }
+
+    return $exitCode
+}
+
 function Show-Banner {
     Write-Host ""
     Write-Host "   +-----------------------------+" -ForegroundColor Magenta
@@ -120,10 +151,12 @@ function Offer-WingetInstall($name, $wingetId) {
     }
     Info "Installing $name via winget (id: $wingetId) - full output is being logged."
     Log "COMMAND winget install --id $wingetId -e --silent --accept-package-agreements --accept-source-agreements"
-    winget install --id $wingetId -e --silent --accept-package-agreements --accept-source-agreements 2>&1 |
-        Tee-Object -FilePath $LogFile -Append
-    $success = $LASTEXITCODE -eq 0
-    if ($success) { Ok "$name installed" } else { Err "$name install failed (exit $LASTEXITCODE) - see $LogFile" }
+    $exitCode = Invoke-Logged -Command "winget" -Arguments @(
+        "install", "--id", $wingetId, "-e", "--silent",
+        "--accept-package-agreements", "--accept-source-agreements"
+    )
+    $success = $exitCode -eq 0
+    if ($success) { Ok "$name installed" } else { Err "$name install failed (exit $exitCode) - see $LogFile" }
     Refresh-Path
     return $success
 }
@@ -239,7 +272,20 @@ if ($found) {
     try {
         $installScript = Invoke-RestMethod -Uri "https://astral.sh/uv/install.ps1"
         $installScript | Out-File -FilePath $LogFile -Append -Encoding utf8
-        Invoke-Expression $installScript 2>&1 | Tee-Object -FilePath $LogFile -Append
+
+        # The astral install script writes normal progress/info lines to
+        # stderr. Relax $ErrorActionPreference while it runs so those
+        # lines aren't treated as terminating errors (same issue as the
+        # other external tools below).
+        $prevEAP = $ErrorActionPreference
+        $ErrorActionPreference = "Continue"
+        $installOutput = Invoke-Expression $installScript 2>&1 | ForEach-Object { $_.ToString() }
+        $ErrorActionPreference = $prevEAP
+
+        if ($installOutput) {
+            $installOutput | Out-File -FilePath $LogFile -Append -Encoding utf8
+            $installOutput | ForEach-Object { Write-Host $_ }
+        }
     } catch {
         Err "uv installer failed: $_"
         exit 1
@@ -278,27 +324,9 @@ else {
 
     try {
         # git clone normally writes its progress messages to stderr.
-        # If $ErrorActionPreference is "Stop", PowerShell would turn
-        # those stderr lines into terminating errors even on success.
-        # Temporarily switch to "Continue" while running git, and
-        # convert any ErrorRecord objects to plain strings.
-        $prevEAP = $ErrorActionPreference
-        $ErrorActionPreference = "Continue"
-
-        $cloneOutput = & git clone $RepoUrl $RepoDir 2>&1 | ForEach-Object { $_.ToString() }
-        $cloneExitCode = $LASTEXITCODE
-
-        $ErrorActionPreference = $prevEAP
-
-        # Save git output to log
-        $cloneOutput | Out-File -FilePath $LogFile -Append -Encoding utf8
-
-        # Show git output to user
-        if ($cloneOutput) {
-            $cloneOutput | ForEach-Object {
-                Write-Host $_
-            }
-        }
+        # Invoke-Logged relaxes $ErrorActionPreference while it runs so
+        # those lines aren't treated as terminating errors even on success.
+        $cloneExitCode = Invoke-Logged -Command "git" -Arguments @("clone", $RepoUrl, $RepoDir)
 
         if ($cloneExitCode -ne 0) {
             if (Test-Path "$RepoDir\.git") {
@@ -347,9 +375,11 @@ Require-Confirm "Install Python dependencies from requirements.txt (via uv)?"
 Info "Installing Python dependencies - this can take a few minutes."
 Info "Full output is being logged to $LogFile ..."
 Log "COMMAND $($script:UvCmd) pip install --python $VenvPy -r requirements.txt"
-& $script:UvCmd pip install --python $VenvPy -r requirements.txt 2>&1 | Tee-Object -FilePath $LogFile -Append
-if ($LASTEXITCODE -ne 0) {
-    Err "Python dependency install failed (exit $LASTEXITCODE) - see $LogFile for details"
+$exitCode = Invoke-Logged -Command $script:UvCmd -Arguments @(
+    "pip", "install", "--python", $VenvPy, "-r", "requirements.txt"
+)
+if ($exitCode -ne 0) {
+    Err "Python dependency install failed (exit $exitCode) - see $LogFile for details"
     exit 1
 }
 $installedPkgs = & $script:UvCmd pip list --python $VenvPy 2>$null
@@ -364,8 +394,8 @@ Show-Step "Playwright browsers"
 if (Confirm "Install Playwright browser binaries (needed for browser automation features)?" "yes") {
     Info "Installing Playwright browsers..."
     Log "COMMAND $VenvPy -m playwright install"
-    & $VenvPy -m playwright install 2>&1 | Tee-Object -FilePath $LogFile -Append
-    if ($LASTEXITCODE -ne 0) {
+    $exitCode = Invoke-Logged -Command $VenvPy -Arguments @("-m", "playwright", "install")
+    if ($exitCode -ne 0) {
         Warn "Playwright browser install failed - see $LogFile for details."
     } else {
         Ok "Playwright ready"
@@ -403,14 +433,14 @@ Show-Step "Frontend dependencies"
 Require-Confirm "Install frontend dependencies (npm install)?"
 Info "Installing frontend dependencies - full output is being logged."
 Log "COMMAND npm install"
-npm install 2>&1 | Tee-Object -FilePath $LogFile -Append
-if ($LASTEXITCODE -ne 0) {
-    Err "npm install failed (exit $LASTEXITCODE) - see $LogFile for details"
+$exitCode = Invoke-Logged -Command "npm" -Arguments @("install")
+if ($exitCode -ne 0) {
+    Err "npm install failed (exit $exitCode) - see $LogFile for details"
     exit 1
 }
 "" | Out-File -FilePath $LogFile -Append
 "----- Top-level npm packages installed -----" | Out-File -FilePath $LogFile -Append
-npm list --depth=0 2>&1 | Out-File -FilePath $LogFile -Append
+Invoke-Logged -Command "npm" -Arguments @("list", "--depth=0") -Quiet | Out-Null
 "----------------------------------------------" | Out-File -FilePath $LogFile -Append
 Ok "Frontend dependencies installed - top-level package list in $LogFile"
 
