@@ -9,34 +9,95 @@
 # If your execution policy blocks local scripts, run once:
 #   Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 #
-# This script asks before installing anything on your system. Nothing is
-# installed silently. A full log of everything installed is written to
-# scarlett-setup-<timestamp>.log in the current directory.
+# This script asks before installing (or removing/recreating) anything on
+# your system. Nothing happens silently. A full log of everything that ran
+# is written to scarlett-setup-<timestamp>.log in the current directory.
 
+$ErrorActionPreference = "Stop"
+
+# ---------------------------------------------------------------------------
+# Style
+# ---------------------------------------------------------------------------
 $RepoUrl = "https://github.com/Mahan0Amol/Scarlett.git"
 $RepoDir = "Scarlett"
 $MinPythonMinor = 11
 $MinNodeMajor = 18
+$TotalSteps = 11
+$script:StepNum = 0
 
 $LogFile = "scarlett-setup-$(Get-Date -Format 'yyyyMMdd-HHmmss').log"
 "Scarlett setup log - started $(Get-Date)" | Out-File -FilePath $LogFile -Encoding utf8
 
-function Log($msg) { "[$(Get-Date -Format 'HH:mm:ss')] $msg" | Out-File -FilePath $LogFile -Append -Encoding utf8 }
-function Info($msg) { Write-Host "==> $msg" -ForegroundColor Cyan; Log "INFO  $msg" }
-function Ok($msg)   { Write-Host "OK  $msg" -ForegroundColor Green; Log "OK    $msg" }
-function Warn($msg) { Write-Host "!!  $msg" -ForegroundColor Yellow; Log "WARN  $msg" }
-function Err($msg)  { Write-Host "XX  $msg" -ForegroundColor Red; Log "ERROR $msg" }
+# Symbols are built from code points, not typed as literal characters, so the
+# script source stays plain ASCII. That avoids the classic PowerShell 5.1
+# problem where a non-UTF8 console codepage mangles literal unicode saved in
+# the .ps1 file into mojibake.
+$script:SymOk    = [char]0x2713   # check mark
+$script:SymCross = [char]0x2717   # cross mark
+$script:SymWarn  = [char]0x26A0   # warning triangle
+$script:SymArrow = ">"
 
-Info "Logging full install output to: $LogFile"
+function Log($msg)  { "[$(Get-Date -Format 'HH:mm:ss')] $msg" | Out-File -FilePath $LogFile -Append -Encoding utf8 }
+function Info($msg) { Write-Host "  $script:SymArrow $msg" -ForegroundColor Cyan; Log "INFO  $msg" }
+function Ok($msg)   { Write-Host "  $script:SymOk $msg" -ForegroundColor Green; Log "OK    $msg" }
+function Warn($msg) { Write-Host "  $script:SymWarn $msg" -ForegroundColor Yellow; Log "WARN  $msg" }
+function Err($msg)  { Write-Host "  $script:SymCross $msg" -ForegroundColor Red; Log "ERROR $msg" }
 
+function Show-Banner {
+    Write-Host ""
+    Write-Host "   +-----------------------------+" -ForegroundColor Magenta
+    Write-Host "   |          SCARLETT           |" -ForegroundColor Magenta
+    Write-Host "   |         setup script        |" -ForegroundColor Magenta
+    Write-Host "   +-----------------------------+" -ForegroundColor Magenta
+    Write-Host ""
+}
+
+function Show-Step($title) {
+    $script:StepNum += 1
+    Write-Host ""
+    Write-Host "[$($script:StepNum)/$TotalSteps] " -ForegroundColor DarkGray -NoNewline
+    Write-Host $title -ForegroundColor White
+}
+
+function Show-Divider { Write-Host "  --------------------------------" -ForegroundColor DarkGray }
+
+# ---------------------------------------------------------------------------
+# Error handling
+# ---------------------------------------------------------------------------
+# Everything below runs inside one try/catch so any unexpected failure ends
+# with a clear message and a pointer to the log, instead of a raw stack trace.
+function Invoke-Main {
+
+Show-Banner
+Info "Logging full output to: $LogFile"
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 function Test-Command($name) {
     return [bool](Get-Command $name -ErrorAction SilentlyContinue)
 }
 
-function Ask-YesNo($prompt) {
-    $reply = Read-Host "$prompt [y/N]"
-    Log "PROMPT $prompt -> $reply"
-    return $reply -match '^[Yy]'
+# Ask a yes/no question.
+#   Confirm "question" "yes"  -> shows [Y/n], empty answer = yes
+#   Confirm "question" "no"   -> shows [y/N], empty answer = no  (default)
+function Confirm($prompt, $default = "no") {
+    $suffix = if ($default -eq "yes") { "[Y/n]" } else { "[y/N]" }
+    $reply = Read-Host "  $prompt $suffix"
+    Log "PROMPT $prompt -> $(if ($reply) { $reply } else { "<default:$default>" })"
+    if ([string]::IsNullOrWhiteSpace($reply)) {
+        return ($default -eq "yes")
+    }
+    return ($reply -match '^[Yy]')
+}
+
+# Ask for confirmation before a *mandatory* step. If declined, Scarlett
+# cannot continue, so we explain why and exit cleanly.
+function Require-Confirm($prompt) {
+    if (-not (Confirm $prompt "yes")) {
+        Err "Can't continue without this - Scarlett needs it to run."
+        exit 1
+    }
 }
 
 # Refreshes $env:Path from the registry so newly-installed tools (e.g. via
@@ -48,7 +109,7 @@ function Refresh-Path {
 }
 
 function Offer-WingetInstall($name, $wingetId) {
-    if (-not (Ask-YesNo "$name was not found. Install it now via winget?")) {
+    if (-not (Confirm "$name was not found. Install it now via winget?" "yes")) {
         Warn "Skipping $name install - you'll need to install it yourself before Scarlett will run."
         return $false
     }
@@ -57,7 +118,7 @@ function Offer-WingetInstall($name, $wingetId) {
         Warn "Install $name manually, then re-run this script."
         return $false
     }
-    Info "Installing $name via winget (id: $wingetId) — full output is being logged."
+    Info "Installing $name via winget (id: $wingetId) - full output is being logged."
     Log "COMMAND winget install --id $wingetId -e --silent --accept-package-agreements --accept-source-agreements"
     winget install --id $wingetId -e --silent --accept-package-agreements --accept-source-agreements 2>&1 |
         Tee-Object -FilePath $LogFile -Append
@@ -68,7 +129,7 @@ function Offer-WingetInstall($name, $wingetId) {
 }
 
 # ---- 1. git ------------------------------------------------------------------
-Info "Checking for git..."
+Show-Step "git"
 if (Test-Command git) {
     Ok "git found ($(git --version))"
 } else {
@@ -80,7 +141,7 @@ if (Test-Command git) {
 }
 
 # ---- 2. python -----------------------------------------------------------------
-Info "Checking for Python 3.$MinPythonMinor+..."
+Show-Step "Python $MinPythonMinor+"
 function Find-GoodPython {
     foreach ($candidate in @("py", "python", "python3")) {
         if (Test-Command $candidate) {
@@ -114,7 +175,7 @@ if ($pythonBin) {
 }
 
 # ---- 3. node -------------------------------------------------------------------
-Info "Checking for Node.js $MinNodeMajor+..."
+Show-Step "Node.js $MinNodeMajor+"
 function Node-Ok {
     if (-not (Test-Command node)) { return $false }
     if (-not (Test-Command npm)) { return $false }
@@ -140,62 +201,134 @@ if (-not (Test-Command npm)) {
 }
 Ok "npm $(npm -v) found"
 
-# ---- 4. clone repo (skip if already inside it) ----------------------------------
-if ((Test-Path "backend/server.py") -and (Test-Path "package.json")) {
-    Info "Already inside the Scarlett repo - skipping clone."
+# ---- 4. ffmpeg -------------------------------------------------------------------
+Show-Step "ffmpeg"
+$HasFfmpeg = $false
+if (Test-Command ffmpeg) {
+    Ok "ffmpeg found"
+    $HasFfmpeg = $true
 } else {
-    if (Test-Path $RepoDir) {
-        Warn "'$RepoDir' already exists - using it instead of re-cloning."
-    } else {
-        Info "Cloning Scarlett..."
-        Log "COMMAND git clone $RepoUrl $RepoDir"
-        git clone $RepoUrl $RepoDir 2>&1 | Tee-Object -FilePath $LogFile -Append
-        if ($LASTEXITCODE -ne 0) { Err "Clone failed."; exit 1 }
-        Ok "Cloned into .\$RepoDir"
+    if (Offer-WingetInstall "ffmpeg" "Gyan.FFmpeg") {
+        if (Test-Command ffmpeg) { $HasFfmpeg = $true }
     }
+    if (-not $HasFfmpeg) {
+        Warn "Continuing without ffmpeg - voice features that rely on audio conversion may not work."
+        Warn "Install it later: https://ffmpeg.org/download.html"
+    }
+}
+
+# ---- 5. uv (fast Python package installer) ---------------------------------------
+Show-Step "uv (Python package installer)"
+$script:UvCmd = $null
+function Find-Uv {
+    if (Test-Command uv) { return (Get-Command uv).Source }
+    $candidate = Join-Path $env:USERPROFILE ".local\bin\uv.exe"
+    if (Test-Path $candidate) { return $candidate }
+    return $null
+}
+
+$found = Find-Uv
+if ($found) {
+    $script:UvCmd = $found
+    Ok "uv found ($(& $found --version))"
+} else {
+    Warn "uv was not found (used to install Python packages quickly)"
+    Require-Confirm "Install uv now?"
+    Info "Installing uv..."
+    Log "COMMAND irm https://astral.sh/uv/install.ps1 | iex"
+    try {
+        $installScript = Invoke-RestMethod -Uri "https://astral.sh/uv/install.ps1"
+        $installScript | Out-File -FilePath $LogFile -Append -Encoding utf8
+        Invoke-Expression $installScript 2>&1 | Tee-Object -FilePath $LogFile -Append
+    } catch {
+        Err "uv installer failed: $_"
+        exit 1
+    }
+    Refresh-Path
+    $found = Find-Uv
+    if (-not $found) {
+        Err "uv installer finished but the binary could not be found."
+        Warn "Install manually: https://docs.astral.sh/uv/getting-started/installation/"
+        exit 1
+    }
+    $script:UvCmd = $found
+    Ok "uv installed ($(& $found --version))"
+}
+
+# ---- 6. clone repo (skip if already inside it) ----------------------------------
+Show-Step "Scarlett repository"
+if ((Test-Path "backend/server.py") -and (Test-Path "package.json")) {
+    Ok "Already inside the Scarlett repo - skipping clone."
+} elseif (Test-Path $RepoDir) {
+    Warn "'$RepoDir' already exists - using it instead of re-cloning."
+    Set-Location $RepoDir
+} else {
+    Require-Confirm "Clone the Scarlett repository into .\$RepoDir?"
+    Info "Cloning Scarlett..."
+    Log "COMMAND git clone $RepoUrl $RepoDir"
+    git clone $RepoUrl $RepoDir 2>&1 | Tee-Object -FilePath $LogFile -Append
+    if ($LASTEXITCODE -ne 0) { Err "Clone failed. See $LogFile for details."; exit 1 }
+    Ok "Cloned into .\$RepoDir"
     Set-Location $RepoDir
 }
 
-# ---- 5. backend setup -------------------------------------------------------------
-Info "Setting up Python virtual environment..."
-if (-not (Test-Path "venv")) {
+# ---- 7. virtual environment --------------------------------------------------------
+Show-Step "Python virtual environment"
+$VenvPy = "venv\Scripts\python.exe"
+if (Test-Path "venv") {
+    if (Test-Path $VenvPy) {
+        Ok "Virtual environment already exists ($(& $VenvPy --version))"
+    } else {
+        Warn "A 'venv' folder exists but looks broken."
+        Require-Confirm "Remove it and create a fresh virtual environment?"
+        Remove-Item -Recurse -Force "venv"
+        Info "Creating virtual environment..."
+        & $pythonBin -m venv venv
+        Ok "Virtual environment ready ($(& $VenvPy --version))"
+    }
+} else {
+    Require-Confirm "Create a Python virtual environment in .\venv?"
+    Info "Creating virtual environment..."
     & $pythonBin -m venv venv
+    Ok "Virtual environment ready ($(& $VenvPy --version))"
 }
-& .\venv\Scripts\Activate.ps1
-Ok "Virtual environment ready ($(python --version))"
 
-Info "Installing Python dependencies from requirements.txt - this can take a few minutes."
+# ---- 8. python dependencies (installed with uv, into the venv above) -------------
+Show-Step "Python dependencies"
+Require-Confirm "Install Python dependencies from requirements.txt (via uv)?"
+Info "Installing Python dependencies - this can take a few minutes."
 Info "Full output is being logged to $LogFile ..."
-$beforePyPkgs = (pip freeze 2>$null)
-python -m pip install --upgrade pip 2>&1 | Tee-Object -FilePath $LogFile -Append | Out-Null
-pip install -r requirements.txt 2>&1 | Tee-Object -FilePath $LogFile -Append
+Log "COMMAND $($script:UvCmd) pip install --python $VenvPy -r requirements.txt"
+& $script:UvCmd pip install --python $VenvPy -r requirements.txt 2>&1 | Tee-Object -FilePath $LogFile -Append
 if ($LASTEXITCODE -ne 0) {
     Err "Python dependency install failed (exit $LASTEXITCODE) - see $LogFile for details"
-    deactivate
     exit 1
 }
-$afterPyPkgs = (pip freeze 2>$null)
-$newPyPkgs = Compare-Object -ReferenceObject $beforePyPkgs -DifferenceObject $afterPyPkgs -PassThru |
-    Where-Object { $_ -notin $beforePyPkgs }
+$installedPkgs = & $script:UvCmd pip list --python $VenvPy 2>$null
 "" | Out-File -FilePath $LogFile -Append
-"----- Newly installed/updated Python packages -----" | Out-File -FilePath $LogFile -Append
-if ($newPyPkgs) {
-    $newPyPkgs | Out-File -FilePath $LogFile -Append
-    Ok "Installed $($newPyPkgs.Count) Python package(s) - full list in $LogFile"
+"----- Python packages after install -----" | Out-File -FilePath $LogFile -Append
+$installedPkgs | Out-File -FilePath $LogFile -Append
+"------------------------------------------" | Out-File -FilePath $LogFile -Append
+Ok "Python dependencies installed - full list in $LogFile"
+
+# ---- 9. playwright browsers ---------------------------------------------------------
+Show-Step "Playwright browsers"
+if (Confirm "Install Playwright browser binaries (needed for browser automation features)?" "yes") {
+    Info "Installing Playwright browsers..."
+    Log "COMMAND $VenvPy -m playwright install"
+    & $VenvPy -m playwright install 2>&1 | Tee-Object -FilePath $LogFile -Append
+    if ($LASTEXITCODE -ne 0) {
+        Warn "Playwright browser install failed - see $LogFile for details."
+    } else {
+        Ok "Playwright ready"
+    }
 } else {
-    "(none - everything already satisfied)" | Out-File -FilePath $LogFile -Append
-    Ok "Python dependencies already satisfied - nothing new installed"
+    Warn "Skipping Playwright - browser automation features won't work until you run:"
+    Warn "  $VenvPy -m playwright install"
 }
-"-----------------------------------------------------" | Out-File -FilePath $LogFile -Append
 
-Info "Installing Playwright browsers..."
-Log "COMMAND playwright install"
-playwright install 2>&1 | Tee-Object -FilePath $LogFile -Append
-Ok "Playwright ready"
-
-deactivate
-
-# ---- 6. env file --------------------------------------------------------------------
+# ---- 10. env file --------------------------------------------------------------------
+Show-Step ".env configuration"
 if (Test-Path "backend\.env") {
     Ok "backend\.env already exists - leaving it untouched"
 } else {
@@ -217,8 +350,10 @@ if (Test-Path "backend\.env") {
     }
 }
 
-# ---- 7. frontend setup ---------------------------------------------------------------
-Info "Installing frontend dependencies (npm install) - full output is being logged."
+# ---- 11. frontend setup ---------------------------------------------------------------
+Show-Step "Frontend dependencies"
+Require-Confirm "Install frontend dependencies (npm install)?"
+Info "Installing frontend dependencies - full output is being logged."
 Log "COMMAND npm install"
 npm install 2>&1 | Tee-Object -FilePath $LogFile -Append
 if ($LASTEXITCODE -ne 0) {
@@ -233,9 +368,10 @@ Ok "Frontend dependencies installed - top-level package list in $LogFile"
 
 # ---- done ------------------------------------------------------------------------------
 Log "Setup finished successfully."
-Write-Host ""
-Write-Host "Setup complete." -ForegroundColor Green
-Write-Host "Full install log saved to: $LogFile" -ForegroundColor Cyan
+Show-Divider
+Write-Host "  Setup complete." -ForegroundColor Green
+Write-Host "  Full log: $LogFile" -ForegroundColor DarkGray
+Show-Divider
 Write-Host ""
 Write-Host "Next steps:"
 Write-Host "  1. cd $RepoDir   (if you're not already there)"
@@ -244,5 +380,22 @@ Write-Host "  3. Click the settings icon in the toolbar -> Full Settings -> .env
 Write-Host "     (get one at https://ai.google.dev)"
 Write-Host "  4. Hit the mic button and start talking."
 Write-Host ""
+if (-not $HasFfmpeg) {
+    Write-Host "Note: ffmpeg was not installed. Some voice features may not work until you install it." -ForegroundColor Yellow
+    Write-Host ""
+}
 Write-Host "Note: this script only wires up voice/text chat. Optional plugins (Gmail, printers,"
 Write-Host "smart home, music) need their own setup - see README.md."
+
+}
+
+try {
+    Invoke-Main
+} catch {
+    Write-Host ""
+    Write-Host "  $([char]0x2717) Setup stopped unexpectedly: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host "  $([char]0x2717) Full details were logged to: $LogFile" -ForegroundColor Red
+    "[$(Get-Date -Format 'HH:mm:ss')] FATAL $($_.Exception.Message)" | Out-File -FilePath $LogFile -Append -Encoding utf8
+    "$($_.ScriptStackTrace)" | Out-File -FilePath $LogFile -Append -Encoding utf8
+    exit 1
+}
