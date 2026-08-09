@@ -17,3 +17,12 @@ python-socketio
 taskgroup
 uvicorn
 zeroconf
+aiohttp
+chess
+google-auth
+google-auth-oauthlib
+google-api-python-client
+kasa
+numpy
+requests
+python-vlc
