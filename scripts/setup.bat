@@ -22,7 +22,7 @@ if errorlevel 1 (
     exit /b 1
 )
 
-set "SETUP_PS1_URL=https://raw.githubusercontent.com/Mahan0Amol/Scarlett/scripts/setup.ps1"
+set "SETUP_PS1_URL=https://raw.githubusercontent.com/Mahan0Amol/Scarlett/main/scripts/setup.ps1"
 set "SETUP_PS1_LOCAL=%~dp0setup.ps1"
 
 if exist "%SETUP_PS1_LOCAL%" (

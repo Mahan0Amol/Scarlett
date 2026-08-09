@@ -201,7 +201,20 @@ if (Test-Path "backend\.env") {
 } else {
     Copy-Item "backend\.env.example" "backend\.env"
     Ok "Created backend\.env from template"
-    Warn "Edit backend\.env (or use the in-app Full Settings screen) to add your GEMINI_API_KEY and other values."
+
+    Write-Host ""
+    Write-Host "Gemini API Key setup" -ForegroundColor Cyan
+    Write-Host "You can also set this later from Full Settings or manually in backend\.env."
+    Write-Host ""
+
+    $geminiApiKey = Read-Host "Enter your GEMINI_API_KEY (leave empty to skip)"
+
+    if (-not [string]::IsNullOrWhiteSpace($geminiApiKey)) {
+        Add-Content -Path "backend\.env" -Value "`nGEMINI_API_KEY=$geminiApiKey"
+        Ok "GEMINI_API_KEY saved to backend\.env"
+    } else {
+        Warn "Skipped GEMINI_API_KEY. You can configure it later from Full Settings or manually in backend\.env."
+    }
 }
 
 # ---- 7. frontend setup ---------------------------------------------------------------

@@ -316,7 +316,26 @@ if [ -f "backend/.env" ]; then
 else
     cp backend/.env.example backend/.env
     ok "Created backend/.env from template"
-    warn "Edit backend/.env (or use the in-app Full Settings screen) to add your GEMINI_API_KEY and other values."
+
+    echo
+    echo "Gemini API Key setup"
+    echo "You can also configure it later from the in-app Full Settings screen"
+    echo "or manually in backend/.env."
+    echo
+
+    read -r -p "Enter your GEMINI_API_KEY (leave empty to skip): " gemini_api_key
+
+    if [ -n "$gemini_api_key" ]; then
+        if grep -q '^GEMINI_API_KEY=' backend/.env; then
+            sed -i "s|^GEMINI_API_KEY=.*|GEMINI_API_KEY=$gemini_api_key|" backend/.env
+        else
+            printf '\nGEMINI_API_KEY=%s\n' "$gemini_api_key" >> backend/.env
+        fi
+
+        ok "GEMINI_API_KEY saved to backend/.env"
+    else
+        warn "Skipped GEMINI_API_KEY — you can configure it later from Full Settings or manually in backend/.env."
+    fi
 fi
 
 # ---- 8. frontend setup ----------------------------------------------------------------
