@@ -36,7 +36,6 @@ from authenticator import FaceAuthenticator
 from plugins.smarthome import get_kasa_agent, get_smart_agent
 from plugins.cmd import get_agent as get_cmd_agent
 from plugins.printer import get_agent as get_printer_agent
-from plugins.chess import get_agent as get_chess_agent
 
 # Create a Socket.IO server
 sio = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins='*')
