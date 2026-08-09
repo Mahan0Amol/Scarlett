@@ -1,26 +1,33 @@
 # Scarlett setup script (Windows / PowerShell)
 #
 # Usage (remote install):
-#   irm https://raw.githubusercontent.com/Mahan0Amol/Scarlett/main/setup.ps1 | iex
+#   irm https://raw.githubusercontent.com/Mahan0Amol/Scarlett/main/scripts/setup.ps1 | iex
 #
 # Usage (local, already cloned):
-#   .\setup.ps1
+#   .\scripts\setup.ps1
 #
 # If your execution policy blocks local scripts, run once:
 #   Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 #
 # This script asks before installing anything on your system. Nothing is
-# installed silently.
+# installed silently. A full log of everything installed is written to
+# scarlett-setup-<timestamp>.log in the current directory.
 
 $RepoUrl = "https://github.com/Mahan0Amol/Scarlett.git"
 $RepoDir = "Scarlett"
 $MinPythonMinor = 11
 $MinNodeMajor = 18
 
-function Info($msg) { Write-Host "==> $msg" -ForegroundColor Cyan }
-function Ok($msg)   { Write-Host "OK  $msg" -ForegroundColor Green }
-function Warn($msg) { Write-Host "!!  $msg" -ForegroundColor Yellow }
-function Err($msg)  { Write-Host "XX  $msg" -ForegroundColor Red }
+$LogFile = "scarlett-setup-$(Get-Date -Format 'yyyyMMdd-HHmmss').log"
+"Scarlett setup log - started $(Get-Date)" | Out-File -FilePath $LogFile -Encoding utf8
+
+function Log($msg) { "[$(Get-Date -Format 'HH:mm:ss')] $msg" | Out-File -FilePath $LogFile -Append -Encoding utf8 }
+function Info($msg) { Write-Host "==> $msg" -ForegroundColor Cyan; Log "INFO  $msg" }
+function Ok($msg)   { Write-Host "OK  $msg" -ForegroundColor Green; Log "OK    $msg" }
+function Warn($msg) { Write-Host "!!  $msg" -ForegroundColor Yellow; Log "WARN  $msg" }
+function Err($msg)  { Write-Host "XX  $msg" -ForegroundColor Red; Log "ERROR $msg" }
+
+Info "Logging full install output to: $LogFile"
 
 function Test-Command($name) {
     return [bool](Get-Command $name -ErrorAction SilentlyContinue)
@@ -28,6 +35,7 @@ function Test-Command($name) {
 
 function Ask-YesNo($prompt) {
     $reply = Read-Host "$prompt [y/N]"
+    Log "PROMPT $prompt -> $reply"
     return $reply -match '^[Yy]'
 }
 
@@ -49,23 +57,26 @@ function Offer-WingetInstall($name, $wingetId) {
         Warn "Install $name manually, then re-run this script."
         return $false
     }
-    Info "Running: winget install --id $wingetId -e --silent --accept-package-agreements --accept-source-agreements"
-    winget install --id $wingetId -e --silent --accept-package-agreements --accept-source-agreements
+    Info "Installing $name via winget (id: $wingetId) — full output is being logged."
+    Log "COMMAND winget install --id $wingetId -e --silent --accept-package-agreements --accept-source-agreements"
+    winget install --id $wingetId -e --silent --accept-package-agreements --accept-source-agreements 2>&1 |
+        Tee-Object -FilePath $LogFile -Append
+    $success = $LASTEXITCODE -eq 0
+    if ($success) { Ok "$name installed" } else { Err "$name install failed (exit $LASTEXITCODE) - see $LogFile" }
     Refresh-Path
-    return $true
+    return $success
 }
 
 # ---- 1. git ------------------------------------------------------------------
 Info "Checking for git..."
 if (Test-Command git) {
-    Ok "git found"
+    Ok "git found ($(git --version))"
 } else {
     Offer-WingetInstall "git" "Git.Git" | Out-Null
     if (-not (Test-Command git)) {
         Err "git is still not available. Install it manually (https://git-scm.com) and re-run this script."
         exit 1
     }
-    Ok "git installed"
 }
 
 # ---- 2. python -----------------------------------------------------------------
@@ -89,7 +100,8 @@ function Find-GoodPython {
 
 $pythonBin = Find-GoodPython
 if ($pythonBin) {
-    Ok "Python found ($pythonBin)"
+    $pyVer = & $pythonBin -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}')"
+    Ok "Python $pyVer found ($pythonBin)"
 } else {
     Offer-WingetInstall "Python 3.$MinPythonMinor+" "Python.Python.3.12" | Out-Null
     $pythonBin = Find-GoodPython
@@ -99,7 +111,6 @@ if ($pythonBin) {
         Warn "If you just installed it via winget, try closing and reopening this terminal first."
         exit 1
     }
-    Ok "Python ready ($pythonBin)"
 }
 
 # ---- 3. node -------------------------------------------------------------------
@@ -112,7 +123,7 @@ function Node-Ok {
 }
 
 if (Node-Ok) {
-    Ok "Node.js $(node -v)"
+    Ok "Node.js $(node -v) found"
 } else {
     Offer-WingetInstall "Node.js" "OpenJS.NodeJS.LTS" | Out-Null
     if (-not (Node-Ok)) {
@@ -121,14 +132,13 @@ if (Node-Ok) {
         Warn "If you just installed it via winget, try closing and reopening this terminal first."
         exit 1
     }
-    Ok "Node.js $(node -v)"
 }
 
 if (-not (Test-Command npm)) {
     Err "npm not found (usually ships with Node.js)."
     exit 1
 }
-Ok "npm $(npm -v)"
+Ok "npm $(npm -v) found"
 
 # ---- 4. clone repo (skip if already inside it) ----------------------------------
 if ((Test-Path "backend/server.py") -and (Test-Path "package.json")) {
@@ -138,7 +148,8 @@ if ((Test-Path "backend/server.py") -and (Test-Path "package.json")) {
         Warn "'$RepoDir' already exists - using it instead of re-cloning."
     } else {
         Info "Cloning Scarlett..."
-        git clone $RepoUrl $RepoDir
+        Log "COMMAND git clone $RepoUrl $RepoDir"
+        git clone $RepoUrl $RepoDir 2>&1 | Tee-Object -FilePath $LogFile -Append
         if ($LASTEXITCODE -ne 0) { Err "Clone failed."; exit 1 }
         Ok "Cloned into .\$RepoDir"
     }
@@ -151,20 +162,35 @@ if (-not (Test-Path "venv")) {
     & $pythonBin -m venv venv
 }
 & .\venv\Scripts\Activate.ps1
-Ok "Virtual environment ready"
+Ok "Virtual environment ready ($(python --version))"
 
-Info "Installing Python dependencies (this can take a few minutes)..."
-python -m pip install --upgrade pip --quiet
-pip install -r requirements.txt --quiet
+Info "Installing Python dependencies from requirements.txt - this can take a few minutes."
+Info "Full output is being logged to $LogFile ..."
+$beforePyPkgs = (pip freeze 2>$null)
+python -m pip install --upgrade pip 2>&1 | Tee-Object -FilePath $LogFile -Append | Out-Null
+pip install -r requirements.txt 2>&1 | Tee-Object -FilePath $LogFile -Append
 if ($LASTEXITCODE -ne 0) {
-    Err "Python dependency install failed - see the error above."
+    Err "Python dependency install failed (exit $LASTEXITCODE) - see $LogFile for details"
     deactivate
     exit 1
 }
-Ok "Python dependencies installed"
+$afterPyPkgs = (pip freeze 2>$null)
+$newPyPkgs = Compare-Object -ReferenceObject $beforePyPkgs -DifferenceObject $afterPyPkgs -PassThru |
+    Where-Object { $_ -notin $beforePyPkgs }
+"" | Out-File -FilePath $LogFile -Append
+"----- Newly installed/updated Python packages -----" | Out-File -FilePath $LogFile -Append
+if ($newPyPkgs) {
+    $newPyPkgs | Out-File -FilePath $LogFile -Append
+    Ok "Installed $($newPyPkgs.Count) Python package(s) - full list in $LogFile"
+} else {
+    "(none - everything already satisfied)" | Out-File -FilePath $LogFile -Append
+    Ok "Python dependencies already satisfied - nothing new installed"
+}
+"-----------------------------------------------------" | Out-File -FilePath $LogFile -Append
 
 Info "Installing Playwright browsers..."
-playwright install
+Log "COMMAND playwright install"
+playwright install 2>&1 | Tee-Object -FilePath $LogFile -Append
 Ok "Playwright ready"
 
 deactivate
@@ -179,17 +205,24 @@ if (Test-Path "backend\.env") {
 }
 
 # ---- 7. frontend setup ---------------------------------------------------------------
-Info "Installing frontend dependencies (npm install)..."
-npm install
+Info "Installing frontend dependencies (npm install) - full output is being logged."
+Log "COMMAND npm install"
+npm install 2>&1 | Tee-Object -FilePath $LogFile -Append
 if ($LASTEXITCODE -ne 0) {
-    Err "npm install failed - see the error above."
+    Err "npm install failed (exit $LASTEXITCODE) - see $LogFile for details"
     exit 1
 }
-Ok "Frontend dependencies installed"
+"" | Out-File -FilePath $LogFile -Append
+"----- Top-level npm packages installed -----" | Out-File -FilePath $LogFile -Append
+npm list --depth=0 2>&1 | Out-File -FilePath $LogFile -Append
+"----------------------------------------------" | Out-File -FilePath $LogFile -Append
+Ok "Frontend dependencies installed - top-level package list in $LogFile"
 
 # ---- done ------------------------------------------------------------------------------
+Log "Setup finished successfully."
 Write-Host ""
 Write-Host "Setup complete." -ForegroundColor Green
+Write-Host "Full install log saved to: $LogFile" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "Next steps:"
 Write-Host "  1. cd $RepoDir   (if you're not already there)"

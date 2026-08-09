@@ -19,7 +19,7 @@ Scarlett runs as a small **Electron desktop app** (React frontend) talking to a 
 - [Plugin System](#plugin-system)
 - [Getting Started](#getting-started)
   - [Quick Install (recommended)](#quick-install-recommended)
-  - [Manual Install](#manual-Install)
+  - [Prerequisites](#prerequisites)
   - [1. Clone the repo](#1-clone-the-repo)
   - [2. Backend setup](#2-backend-setup)
   - [3. Frontend setup](#3-frontend-setup)
@@ -95,7 +95,7 @@ See [Writing Your Own Plugin](#writing-your-own-plugin) for a minimal example.
 
 ### Quick Install (recommended)
 
-Scarlett ships with setup scripts under [`scripts/`](scripts/) that check for Python/Node/git, ask before installing anything missing, clone the repo if needed, create the virtual environment, install all backend and frontend dependencies, and set up your `.env` file. Nothing is installed silently — each script asks for confirmation before touching your system.
+Scarlett ships with setup scripts under [`scripts/`](scripts/) that check for Python/Node/git, ask before installing anything missing, clone the repo if needed, create the virtual environment, install all backend and frontend dependencies, and set up your `.env` file. Nothing is installed silently — each script asks for confirmation before touching your system, and writes a full log of everything it installs to `scarlett-setup-<timestamp>.log` in the folder you ran it from (handy if something fails partway through, or you just want to see exactly what got installed).
 
 **Linux / macOS:**
 
@@ -115,9 +115,7 @@ irm https://raw.githubusercontent.com/Mahan0Amol/Scarlett/main/scripts/setup.ps1
 
 Once a script finishes, skip ahead to [Run it](#5-run-it) — steps 1–4 below are handled for you. The manual steps are still here for anyone who wants to do it by hand or understand what the script is doing.
 
-### Manual Install
-
-## Prerequisites
+### Prerequisites
 
 | Requirement | Notes |
 |---|---|
@@ -384,7 +382,7 @@ This repo was extracted directly from a working personal setup. Before you push 
 - [ ] **`backend/.env.example`** — as tracked today, its defaults for `EMAIL_ADDRESS`, `USER_NAME`, and `USER_KNOWN_AS` are real personal values, not generic placeholders. Replace them with placeholders like `your_email@gmail.com` / `Your Name` before others clone this repo.
 - [ ] **`reference.jpg`** (or similar) — the face-auth reference image, if you've enabled that feature. Never commit this.
 - [ ] **`package.json`**`.license` field says `ISC`, but [`LICENSE`](LICENSE) is MIT — reconcile the two (see note in [Frontend setup](#3-frontend-setup)).
-- [ ] Add/verify a proper **`.gitignore`** covering at minimum: `.env`, `venv/`, `node_modules/`, `*.token.json`, `credentials.json`, `settings.json`, `reference.jpg`, `__pycache__/`, and build output (`dist/`, `build/`).
+- [ ] Add/verify a proper **`.gitignore`** covering at minimum: `.env`, `venv/`, `node_modules/`, `*.token.json`, `credentials.json`, `settings.json`, `reference.jpg`, `__pycache__/`, `scarlett-setup-*.log`, and build output (`dist/`, `build/`).
 - [ ] Confirm `electron/main.js`, `index.html`, `vite.config.js`, and `tailwind.config.js` are actually committed alongside `package.json` and `requirements.txt`.
 - [ ] Consider trimming unused dependencies from `requirements.txt` (e.g. `PySide6` — see the note in [Backend setup](#2-backend-setup)).
 

@@ -2,13 +2,14 @@
 # Scarlett setup script (Linux / macOS)
 #
 # Usage (remote install):
-#   curl -fsSL https://raw.githubusercontent.com/Mahan0Amol/Scarlett/main/setup.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/Mahan0Amol/Scarlett/main/scripts/setup.sh | bash
 #
 # Usage (local, already cloned):
-#   ./setup.sh
+#   ./scripts/setup.sh
 #
 # This script asks before installing anything on your system. Nothing is
-# installed silently.
+# installed silently. A full log of everything installed is written to
+# scarlett-setup-<timestamp>.log in the current directory.
 
 set -uo pipefail
 
@@ -17,12 +18,19 @@ REPO_DIR="Scarlett"
 MIN_PYTHON_MINOR=11
 MIN_NODE_MAJOR=18
 
+LOG_FILE="scarlett-setup-$(date +%Y%m%d-%H%M%S).log"
+echo "Scarlett setup log — started $(date)" > "$LOG_FILE"
+
 # ---- colors -----------------------------------------------------------------
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
-info()  { echo -e "${BLUE}==>${NC} $1"; }
-ok()    { echo -e "${GREEN}OK${NC}  $1"; }
-warn()  { echo -e "${YELLOW}!!${NC}  $1"; }
-err()   { echo -e "${RED}XX${NC}  $1"; }
+
+log_line() { echo "[$(date +%H:%M:%S)] $1" >> "$LOG_FILE"; }
+info()  { echo -e "${BLUE}==>${NC} $1"; log_line "INFO  $1"; }
+ok()    { echo -e "${GREEN}OK${NC}  $1"; log_line "OK    $1"; }
+warn()  { echo -e "${YELLOW}!!${NC}  $1"; log_line "WARN  $1"; }
+err()   { echo -e "${RED}XX${NC}  $1"; log_line "ERROR $1"; }
+
+info "Logging full install output to: $LOG_FILE"
 
 # ---- helpers ------------------------------------------------------------------
 have() { command -v "$1" >/dev/null 2>&1; }
@@ -39,6 +47,7 @@ ask_yes_no() {
         warn "No interactive terminal detected — assuming 'no' for: $prompt"
         reply="n"
     fi
+    log_line "PROMPT $prompt -> $reply"
     case "$reply" in
         [yY][eE][sS]|[yY]) return 0 ;;
         *) return 1 ;;
@@ -66,8 +75,8 @@ detect_pkg_manager() {
 
 PKG_MGR=$(detect_pkg_manager)
 
-# Runs an install command for the detected package manager.
-# Usage: pkg_install "git" apt:git dnf:git pacman:git brew:git
+# Runs an install command for the detected package manager, streaming and
+# logging its full output. Usage: pkg_install "label" apt:pkgs dnf:pkgs ...
 pkg_install() {
     local label="$1"; shift
     local cmd=""
@@ -90,8 +99,16 @@ pkg_install() {
         err "Don't know how to install $label on this system (no supported package manager found)."
         return 1
     fi
-    info "Running: $cmd"
-    eval "$cmd"
+    info "Installing $label via $PKG_MGR ($pkgs)..."
+    log_line "COMMAND $cmd"
+    eval "$cmd" 2>&1 | tee -a "$LOG_FILE"
+    local status=$?
+    if [ $status -eq 0 ]; then
+        ok "$label installed"
+    else
+        err "$label install failed (exit $status) — see $LOG_FILE for details"
+    fi
+    return $status
 }
 
 # Ask permission, then install. Returns 1 if the user declined or install failed.
@@ -115,14 +132,13 @@ info "Detected OS: $CURRENT_OS  (package manager: $PKG_MGR)"
 # ---- 1. git -------------------------------------------------------------------
 info "Checking for git..."
 if have git; then
-    ok "git found"
+    ok "git found ($(git --version))"
 else
     offer_install "git" "git" apt:git dnf:git yum:git pacman:git zypper:git brew:git
     if ! have git; then
         err "git is still not available. Install it manually (https://git-scm.com) and re-run this script."
         exit 1
     fi
-    ok "git installed"
 fi
 
 # ---- 2. python ------------------------------------------------------------------
@@ -140,7 +156,7 @@ for candidate in python3.13 python3.12 python3.11 python3; do
 done
 
 if [ -n "$PYTHON_BIN" ]; then
-    ok "Python $($PYTHON_BIN -c 'import sys;print(f"{sys.version_info.major}.{sys.version_info.minor}")') ($PYTHON_BIN)"
+    ok "Python $($PYTHON_BIN -c 'import sys;print(f"{sys.version_info.major}.{sys.version_info.minor}")') found ($PYTHON_BIN)"
 else
     if offer_install "Python 3.$MIN_PYTHON_MINOR+" "python3" \
         apt:"python3 python3-venv python3-pip" \
@@ -165,7 +181,6 @@ else
         warn "Try https://python.org, or on Ubuntu the deadsnakes PPA, or pyenv, then re-run this script."
         exit 1
     fi
-    ok "Python ready ($PYTHON_BIN)"
 fi
 
 # ---- 3. node --------------------------------------------------------------------
@@ -175,13 +190,15 @@ node_ok() {
 }
 
 if node_ok; then
-    ok "Node.js $(node -v)"
+    ok "Node.js $(node -v) found"
 else
     installed=false
     if [ "$PKG_MGR" = "apt" ] && ask_yes_no "Node.js $MIN_NODE_MAJOR+ was not found. Install it now via NodeSource (recommended, gets a current version)?"; then
         info "Setting up NodeSource repo for Node 20.x..."
-        if curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - ; then
-            sudo apt-get install -y nodejs && installed=true
+        log_line "COMMAND curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -"
+        if curl -fsSL https://deb.nodesource.com/setup_20.x 2>&1 | tee -a "$LOG_FILE" | sudo -E bash - ; then
+            info "Installing nodejs package..."
+            sudo apt-get install -y nodejs 2>&1 | tee -a "$LOG_FILE" && installed=true
         fi
     elif [ "$PKG_MGR" != "none" ]; then
         if offer_install "Node.js" "node" \
@@ -202,7 +219,7 @@ else
         fi
         exit 1
     fi
-    ok "Node.js $(node -v)"
+    ok "Node.js $(node -v) installed"
 fi
 
 # ---- 4. clone repo (skip if already inside it) -----------------------------------
@@ -213,7 +230,9 @@ else
         warn "'$REPO_DIR' already exists — using it instead of re-cloning."
     else
         info "Cloning Scarlett..."
-        git clone "$REPO_URL" "$REPO_DIR" || { err "Clone failed."; exit 1; }
+        log_line "COMMAND git clone $REPO_URL $REPO_DIR"
+        git clone "$REPO_URL" "$REPO_DIR" 2>&1 | tee -a "$LOG_FILE"
+        [ ${PIPESTATUS[0]} -eq 0 ] || { err "Clone failed."; exit 1; }
         ok "Cloned into ./$REPO_DIR"
     fi
     cd "$REPO_DIR" || exit 1
@@ -225,7 +244,8 @@ if [ "$CURRENT_OS" = "macos" ]; then
         ok "portaudio already installed"
     else
         if ask_yes_no "portaudio (required to build pyaudio) was not found. Install it now via Homebrew?"; then
-            brew install portaudio || warn "portaudio install failed — pyaudio may fail to build below."
+            info "Installing portaudio..."
+            brew install portaudio 2>&1 | tee -a "$LOG_FILE" || warn "portaudio install failed — pyaudio may fail to build below."
         else
             warn "Skipping portaudio — 'pip install pyaudio' may fail without it."
         fi
@@ -235,7 +255,8 @@ elif [ "$CURRENT_OS" = "linux" ] && [ "$PKG_MGR" = "apt" ]; then
         ok "portaudio19-dev already installed"
     else
         if ask_yes_no "portaudio19-dev (required to build pyaudio) was not found. Install it now?"; then
-            sudo apt-get update -y && sudo apt-get install -y portaudio19-dev python3-dev
+            info "Installing portaudio19-dev..."
+            sudo apt-get update -y && sudo apt-get install -y portaudio19-dev python3-dev 2>&1 | tee -a "$LOG_FILE"
         else
             warn "Skipping portaudio19-dev — 'pip install pyaudio' may fail without it."
         fi
@@ -249,22 +270,40 @@ if [ ! -d "venv" ]; then
 fi
 # shellcheck disable=SC1091
 source venv/bin/activate
-ok "Virtual environment ready"
+ok "Virtual environment ready ($(python --version))"
 
-info "Installing Python dependencies (this can take a few minutes)..."
-pip install --upgrade pip --quiet
-if ! pip install -r requirements.txt --quiet; then
-    err "Python dependency install failed — see the error above."
+info "Installing Python dependencies from requirements.txt — this can take a few minutes."
+info "Full output is being logged to $LOG_FILE ..."
+BEFORE_PY_PKGS=$(pip freeze 2>/dev/null || true)
+pip install --upgrade pip 2>&1 | tee -a "$LOG_FILE" >/dev/null
+pip install -r requirements.txt 2>&1 | tee -a "$LOG_FILE"
+PIP_STATUS=${PIPESTATUS[0]}
+if [ $PIP_STATUS -ne 0 ]; then
+    err "Python dependency install failed (exit $PIP_STATUS) — see $LOG_FILE for details"
     deactivate
     exit 1
 fi
-ok "Python dependencies installed"
+AFTER_PY_PKGS=$(pip freeze 2>/dev/null || true)
+NEW_PY_PKGS=$(comm -13 <(echo "$BEFORE_PY_PKGS" | sort) <(echo "$AFTER_PY_PKGS" | sort))
+{
+    echo ""
+    echo "----- Newly installed/updated Python packages -----"
+    if [ -n "$NEW_PY_PKGS" ]; then echo "$NEW_PY_PKGS"; else echo "(none — everything already satisfied)"; fi
+    echo "-----------------------------------------------------"
+} >> "$LOG_FILE"
+if [ -n "$NEW_PY_PKGS" ]; then
+    NEW_COUNT=$(echo "$NEW_PY_PKGS" | wc -l | tr -d ' ')
+    ok "Installed $NEW_COUNT Python package(s) — full list in $LOG_FILE"
+else
+    ok "Python dependencies already satisfied — nothing new installed"
+fi
 
 info "Installing Playwright browsers..."
-playwright install
+log_line "COMMAND playwright install"
+playwright install 2>&1 | tee -a "$LOG_FILE"
 if [ "$CURRENT_OS" = "linux" ]; then
     if ask_yes_no "Install Playwright's system dependencies too (needs sudo, recommended)?"; then
-        playwright install-deps || warn "playwright install-deps failed — you may need to run it manually."
+        playwright install-deps 2>&1 | tee -a "$LOG_FILE" || warn "playwright install-deps failed — you may need to run it manually."
     fi
 fi
 ok "Playwright ready"
@@ -281,16 +320,27 @@ else
 fi
 
 # ---- 8. frontend setup ----------------------------------------------------------------
-info "Installing frontend dependencies (npm install)..."
-if ! npm install; then
-    err "npm install failed — see the error above."
+info "Installing frontend dependencies (npm install) — full output is being logged."
+log_line "COMMAND npm install"
+npm install 2>&1 | tee -a "$LOG_FILE"
+NPM_STATUS=${PIPESTATUS[0]}
+if [ $NPM_STATUS -ne 0 ]; then
+    err "npm install failed (exit $NPM_STATUS) — see $LOG_FILE for details"
     exit 1
 fi
-ok "Frontend dependencies installed"
+{
+    echo ""
+    echo "----- Top-level npm packages installed -----"
+    npm list --depth=0 2>&1
+    echo "----------------------------------------------"
+} >> "$LOG_FILE"
+ok "Frontend dependencies installed — top-level package list in $LOG_FILE"
 
 # ---- done -----------------------------------------------------------------------------
+log_line "Setup finished successfully."
 echo ""
 echo -e "${GREEN}Setup complete.${NC}"
+echo -e "Full install log saved to: ${BLUE}$LOG_FILE${NC}"
 echo ""
 echo "Next steps:"
 echo "  1. cd into the Scarlett folder (if you're not already there)"
