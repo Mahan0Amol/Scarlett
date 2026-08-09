@@ -4,11 +4,11 @@
 
 A personal, Jarvis-style voice assistant with a real-time avatar UI, a live video feed, and a plugin system that lets it actually *do* things on your computer and around your home — not just talk about them.
 
-Scarlett runs as a small **Electron desktop app** (React frontend) talking to a **Python backend** that streams your mic and webcam to **Google's Gemini Live API** and gets a natural, interruptible voice conversation back — with full function-calling access to a growing set of tools.
+Scarlett runs as a small **Electron desktop app** (React frontend) talking to a **Python backend** that streams your mic and webcam to **Google's Gemini Live API** and gets back a natural, interruptible voice conversation — with full function-calling access to a growing set of tools.
 
-> ⚠️ **This is a personal project, published as-is.** It's built around one person's setup (their PC, their printer, their smart home devices). See [Before You Publish / Run This Yourself](#before-you-run-this-yourself) for what you'll need to change.
+> ⚠️ **This is a personal project, published as-is.** It's built around one person's setup (their PC, their printer, their smart home devices). Read [Before You Run This Yourself](#before-you-run-this-yourself) before you push it publicly or hand it to someone else.
 
-![demo placeholder](docs/demo.png)
+[![demo placeholder](https://github.com/Mahan0Amol/Scarlett/raw/main/docs/demo.png)](docs/demo.png)
 
 ---
 
@@ -19,15 +19,19 @@ Scarlett runs as a small **Electron desktop app** (React frontend) talking to a 
 - [Plugin System](#plugin-system)
 - [Getting Started](#getting-started)
   - [Prerequisites](#prerequisites)
-  - [Backend setup](#backend-setup)
-  - [Frontend setup](#frontend-setup)
-  - [Environment variables](#environment-variables)
-  - [Running it](#running-it)
+  - [1. Clone the repo](#1-clone-the-repo)
+  - [2. Backend setup](#2-backend-setup)
+  - [3. Frontend setup](#3-frontend-setup)
+  - [4. Configure environment variables](#4-configure-environment-variables)
+  - [5. Run it](#5-run-it)
+- [Google OAuth Setup (Gmail)](#google-oauth-setup-gmail)
 - [Project Structure](#project-structure)
 - [Writing Your Own Plugin](#writing-your-own-plugin)
+- [Platform Support](#platform-support)
+- [Troubleshooting](#troubleshooting)
 - [Before You Run This Yourself](#before-you-run-this-yourself)
-- [Note](#note)
 - [Contributing](#contributing)
+- [Credits](#credits)
 - [License](#license)
 
 ---
@@ -47,7 +51,7 @@ Scarlett talks like a person (via Gemini's native-audio model), not a script —
 - ♟️ **Games** — full interactive chess and backgammon matches against Scarlett, on-screen boards.
 - 🎵 **Music** — search/play/control a local music library with a synced player UI.
 - 🔒 **Optional face authentication** — lock/unlock the assistant with on-device face recognition (MediaPipe), off by default.
-- 🧩 **A real plugin system** — every one of the features above is a self-contained plugin. Adding a new tool means adding a folder; nothing else in the app needs to change. Plugins can even be packaged (`.splugin`), shared, and installed through a UI, similar to a tiny extension marketplace.
+- 🧩 **A real plugin system** — every feature above is a self-contained plugin. Adding a new tool means adding a folder; nothing else in the app needs to change. Plugins can be packaged (`.splugin`), shared, and installed through a UI, similar to a tiny extension marketplace.
 
 ## Architecture
 
@@ -81,7 +85,7 @@ This is the part of the codebase worth understanding first if you want to extend
 - `plugins/loader.py` auto-discovers and imports every plugin folder at startup — **adding a capability is just adding a folder**, nothing else needs to be wired up.
 - `core/tool_dispatcher.py` routes every Gemini function call to the right plugin handler, checks whether the tool is enabled in Settings, and — for tools flagged `requires_confirmation` — pops a confirmation prompt in the UI before running.
 - Plugins that need one canonical, process-wide instance (an agent, a client, a connection pool) use the `lazy_singleton` helper in `plugins/base.py`, so both a tool handler *and* an unrelated REST route in `server.py` can reach the same instance without manual wiring.
-- Plugins that ship a UI window declare it in `plugin.json` under `frontend`; installing one updates `src/plugins.manifest.json` and regenerates `src/pluginRegistry.jsx` automatically (`backend/plugin_tools/registry_sync.py`) — that file is generated, never hand-edited.
+- Plugins that ship a UI window declare it in `plugin.json` under `frontend`; installing one updates `src/plugins.manifest.json` and regenerates `src/pluginRegistry.jsx` automatically (`backend/plugin_tools/registry_sync.py`) — that file is generated, **never hand-edited**.
 - Plugins can be **packaged** (`backend/plugin_tools/exporter.py` → a `.splugin` zip) and **installed** through the in-app Plugin Manager (Settings → Full Settings → Plugin Manager), which inspects the manifest, shows the user its pip/npm dependencies and requested permissions, and only installs after explicit confirmation.
 
 See [Writing Your Own Plugin](#writing-your-own-plugin) for a minimal example.
@@ -90,62 +94,78 @@ See [Writing Your Own Plugin](#writing-your-own-plugin) for a minimal example.
 
 ### Prerequisites
 
-- **Python 3.11+**
-- **Node.js 18+** and npm
-- A **Google Gemini API key** ([ai.google.dev](https://ai.google.dev)) with access to the Live API
-- Windows is the primary target platform today (some tools shell out to Windows-specific commands, e.g. `cd /d` for drive switching, and use `pyautogui`/keyboard control assuming a Windows desktop). macOS/Linux will need adjustments to a few plugins.
-- This is an **Electron** app on the frontend — `package.json` points its `main` entry at `electron/main.js` and `App.jsx` uses `window.require('electron')` for the frameless window controls (minimize/maximize/close). Make sure `electron/main.js`, `index.html`, `vite.config.js`, and `tailwind.config.js` exist at the repo root alongside `src/` before running — they weren't part of this README's source snapshot, so double-check they're committed.
+| Requirement | Notes |
+|---|---|
+| **Python 3.11+** | Backend runtime |
+| **Node.js 18+** and npm | Frontend/Electron build |
+| **Google Gemini API key** | Get one at [ai.google.dev](https://ai.google.dev) — must have access to the **Live API** |
+| **Git** | To clone the repo |
+| **Windows 10/11** | Primary supported platform today — see [Platform Support](#platform-support) if you're on macOS/Linux |
+| Working microphone & webcam | Required for voice/vision features |
 
-### Backend setup
+This is an **Electron** app on the frontend — `package.json` points its `main` entry at `electron/main.js`, and `App.jsx` uses `window.require('electron')` for the frameless window controls (minimize/maximize/close). Before running, verify these four files actually exist at the repo root alongside `src/`:
+
+```
+electron/main.js
+index.html
+vite.config.js
+tailwind.config.js
+```
+
+If any are missing, the frontend build/Electron shell will fail — check them into version control before continuing.
+
+### 1. Clone the repo
+
+```bash
+git clone https://github.com/Mahan0Amol/Scarlett.git
+cd Scarlett
+```
+
+### 2. Backend setup
 
 ```bash
 python -m venv venv
-venv\Scripts\activate        # Windows
+
+# Windows
+venv\Scripts\activate
+
+# macOS/Linux
+source venv/bin/activate
 
 pip install -r requirements.txt
 playwright install
 ```
 
-> `PySide6` is in `requirements.txt` but not currently imported anywhere in `backend/` — likely a leftover from an earlier desktop-GUI iteration of this project, kept in case it's still needed. Safe to drop if you confirm nothing uses it.
+> **Note:** `PySide6` is listed in `requirements.txt` but is not currently imported anywhere in `backend/` — it's a leftover from an earlier desktop-GUI iteration of this project. It's safe to remove from `requirements.txt` if you confirm nothing in your fork uses it; leaving it in just costs extra install time and disk space.
 
-### Frontend setup
+### 3. Frontend setup
 
 ```bash
 npm install
 ```
 
-Key runtime pieces beyond React itself: `socket.io-client` (backend connection), `@mediapipe/tasks-vision` (hand-tracking cursor), `three` + `@react-three/fiber` + `@react-three/drei` (the 3D avatar/audio visualizer), `chess.js` / `react-chessboard` (chess plugin UI), `framer-motion` (animations), and `electron` itself.
+Key runtime dependencies beyond React itself: `socket.io-client` (backend connection), `@mediapipe/tasks-vision` (hand-tracking cursor), `three` + `@react-three/fiber` + `@react-three/drei` (the 3D avatar/audio visualizer), `chess.js` / `react-chessboard` (chess plugin UI), `framer-motion` (animations), and `electron` itself.
 
-## Running it
+### 4. Configure environment variables
 
-### Normal mode
+Environment variables are set up in **two stages** — a starter file first, then the actual values through the app's UI:
 
-```bash
-# terminal  — frontend + Electron shell + starting backend
-npm run dev               # starts Vite, waits for it, then launches Electron
-```
-### Developer Mode
+1. In `backend/`, copy the example file and rename it:
 
-```bash
-# terminal 1 — backend
-python backend/server.py         # serves on http://127.0.0.1:8000
+   ```bash
+   cd backend
+   cp .env.example .env      # macOS/Linux
+   copy .env.example .env    # Windows
+   cd ..
+   ```
 
-# terminal 2 — frontend + Electron shell
-npm run dev               # starts Vite, waits for it, then launches Electron
-```
-
-`npm run dev` runs `vite` and `electron .` together (via `concurrently` + `wait-on`), so the Electron window opens automatically once the Vite dev server on port 5173 is ready. Use `npm run build` for a production Vite build and `npm start` to launch Electron against it. Hit the mic button to start talking.
-
-
-### Environment 
-
-First go to backend folder and rename the .env.example to .env
-
-Then agfter starting project go to full settings window from settings icon in the Toolbar and add these from .env section
+2. Start Scarlett once (see [Run it](#5-run-it) below).
+3. Click the **settings icon** in the toolbar → **Full Settings** → find the **.env** section.
+4. Enter the values below there. They get written back into `backend/.env` for you.
 
 | Variable | Purpose |
 |---|---|
-| `GEMINI_API_KEY` | Google Gemini API key |
+| `GEMINI_API_KEY` | Google Gemini API key (required — nothing works without this) |
 | `OPENWEATHER_API_KEY` | Weather lookups |
 | `EMAIL_ADDRESS` | SMTP sending account (use an app password, not your real password) |
 | `EMAIL_IMAP` / `EMAIL_IMAP_PORT` | IMAP server for reading mail |
@@ -154,35 +174,104 @@ Then agfter starting project go to full settings window from settings icon in th
 | `USER_KNOWN_AS` | What Scarlett calls you ("sir", your name, a nickname, ...) |
 | `OS` | Target OS string, used by a couple of platform-specific tools |
 
-`backend/settings.json` holds everything that changes at runtime through the Settings UI instead of `.env`: face-auth toggle, per-tool enable/disable (`tool_permissions`), known printers/Kasa devices/door locks, selected mic/speaker/webcam, and cursor sensitivity for the hand-tracking cursor. It's created with sane defaults on first run if missing.
+`backend/settings.json` holds everything that changes at runtime through the Settings UI instead of `.env`: face-auth toggle, per-tool enable/disable (`tool_permissions`), known printers/Kasa devices/door locks, selected mic/speaker/webcam, and cursor sensitivity for the hand-tracking cursor. It's created with sane defaults on first run if it doesn't exist yet.
+
+> Only `GEMINI_API_KEY` is strictly required to get Scarlett talking. Everything else in the table above just unlocks the matching plugin (weather, email, music) — leave them blank and those plugins simply won't work until you fill them in.
+
+### 5. Run it
+
+**Normal mode** — one command, starts everything:
+
+```bash
+npm run dev
+```
+
+This runs `vite` and `electron .` together (via `concurrently` + `wait-on`), so the Electron window opens automatically once the Vite dev server on port `5173` is ready. It also launches the backend.
+
+**Developer mode** — two terminals, useful if you want backend logs separate from the frontend:
+
+```bash
+# terminal 1 — backend
+python backend/server.py         # serves on http://127.0.0.1:8000
+
+# terminal 2 — frontend + Electron shell
+npm run dev
+```
+
+Other useful scripts:
+
+```bash
+npm run build   # production Vite build
+npm start        # launch Electron against the production build
+```
+
+Once the window opens, hit the **mic button** to start talking.
+
+## Google OAuth Setup (Gmail)
+
+To use Scarlett's Gmail features (the email plugin), you need your own Google OAuth credentials — Scarlett doesn't ship with shared ones.
+
+1. **Create a Google Cloud project** at the [Google Cloud Console](https://console.cloud.google.com/). Name it anything, e.g. `Scarlett Gmail`.
+2. **Enable the Gmail API**: *APIs & Services → Library* → search **Gmail API** → **Enable**.
+3. **Configure the OAuth consent screen**: *Google Auth Platform → Branding* → set an application name (e.g. `Scarlett`) and fill in the required contact info. For **Audience**, choose **External** (or **Internal** if your account is part of a Google Workspace org and Scarlett is only for members of that org).
+4. **Add Gmail permissions**: *Google Auth Platform → Data Access* → add the scope `https://mail.google.com/`. This lets Scarlett read, send, and modify/delete emails on your behalf.
+5. **Create an OAuth client**: *Google Auth Platform → Clients → + Create Client* → Application type **Desktop app** → name it (e.g. `Scarlett Gmail`) → **Create**.
+6. **Download `credentials.json`** for the client you just created, rename it exactly to `credentials.json`, and place it here:
+
+   ```
+   Scarlett/
+   └── backend/
+       └── plugins/
+           └── email/
+               ├── credentials.json
+               └── (other files)
+   ```
+
+7. **Start Scarlett normally.** The first time you use a Gmail feature, it opens a Google sign-in page in your browser. Authorize it, and Scarlett stores the resulting token locally (`backend/plugins/email/token.json`) and reuses it for future sessions.
+
+> **Security:** Never commit `credentials.json` or `token.json` to GitHub — they're authentication secrets. Make sure your `.gitignore` includes:
+> ```
+> **/credentials.json
+> **/token.json
+> ```
+> Each separate Scarlett installation should use its own OAuth credentials.
 
 ## Project Structure
 
 ```
 backend/
-├── Scarlett.py           # AudioLoop: the Gemini Live session + system prompt
-├── server.py              # FastAPI + Socket.IO entry point, settings & plugin manager API
-├── authenticator.py        # Optional face-auth
+├── Scarlett.py              # AudioLoop: the Gemini Live session + system prompt
+├── server.py                 # FastAPI + Socket.IO entry point, settings & plugin manager API
+├── authenticator.py           # Optional face-auth
+├── .env.example               # Template — copy to .env before first run
+├── settings.json              # Runtime settings, created with defaults on first run
 ├── core/
-│   ├── audio_io.py         # Mic capture / speaker playback mixin
-│   ├── video_io.py         # Webcam / screen-share mixin
-│   └── tool_dispatcher.py  # Routes Gemini tool calls to plugin handlers
-├── plugins/                # One folder per capability — see Plugin System
-│   ├── base.py             # ToolRegistry, @tool decorator, lazy_singleton
-│   ├── loader.py            # Auto-discovers & imports every plugin
+│   ├── audio_io.py            # Mic capture / speaker playback mixin
+│   ├── video_io.py            # Webcam / screen-share mixin
+│   └── tool_dispatcher.py     # Routes Gemini tool calls to plugin handlers
+├── plugins/                   # One folder per capability — see Plugin System
+│   ├── base.py                # ToolRegistry, @tool decorator, lazy_singleton
+│   ├── loader.py                # Auto-discovers & imports every plugin
 │   ├── cad/ chess/ backgammon/ music/ printer/ smarthome/ web/  # manifest-based (installable/exportable)
 │   └── cmd/ email/ files/ items/ keyboard/ project/ misc/       # built-in, no manifest
 ├── plugin_tools/
-│   ├── importer.py          # Install a .splugin package
-│   ├── exporter.py          # Package a plugin folder into a .splugin
-│   └── registry_sync.py     # Keeps src/pluginRegistry.jsx generated from the manifest
-└── web/full_settings.html   # Full settings page (env vars, tool permissions, plugin manager UI)
+│   ├── importer.py             # Install a .splugin package
+│   ├── exporter.py             # Package a plugin folder into a .splugin
+│   └── registry_sync.py        # Keeps src/pluginRegistry.jsx generated from the manifest
+└── web/full_settings.html      # Full settings page (env vars, tool permissions, plugin manager UI)
 
 src/
-├── App.jsx                  # Main renderer: layout, socket wiring, window management
-├── pluginRegistry.jsx        # AUTO-GENERATED — do not hand-edit
-├── plugins.manifest.json     # Source of truth for installed UI plugins
-└── components/                # One component per feature/plugin window
+├── App.jsx                    # Main renderer: layout, socket wiring, window management
+├── Visualizer.jsx              # Audio-reactive 3D avatar (Three.js)
+├── pluginRegistry.jsx           # AUTO-GENERATED — do not hand-edit
+├── plugins.manifest.json        # Source of truth for installed UI plugins
+└── components/                  # One component per feature/plugin window
+
+electron/
+└── main.js                     # Electron main process — window creation, frameless controls
+
+docs/                           # Screenshots / demo assets
+tests/                          # Test suite (see pytest.ini at repo root)
 ```
 
 ## Writing Your Own Plugin
@@ -206,195 +295,85 @@ async def say_hello(ctx, fc):
     return f"Hello, {name}!"
 ```
 
-Your plugin should have plugin.json and if it have a frontend window add it in frontend/YourPluginWindow.jsx
+Steps:
 
-Restart the backend — that's it. `loader.py` picks it up automatically, `Scarlett.py` includes its schema in the Gemini `tools` list, and `ToolDispatcher` routes calls to it. Add a `plugin.json` (see any folder under `plugins/` that has one) plus a `frontend` entry if it needs a UI window, so it can also be exported/installed via the Plugin Manager.
+1. Create `backend/plugins/<your_plugin_id>/__init__.py` with your `@tool`-decorated functions.
+2. Add a `plugin.json` manifest (copy the shape from any existing plugin folder that has one, e.g. `backend/plugins/cad/`).
+3. If your plugin needs a UI window, add a `frontend` entry in `plugin.json` pointing to a new component, e.g. `src/components/YourPluginWindow.jsx`.
+4. Restart the backend. `loader.py` picks the new plugin up automatically, `Scarlett.py` includes its schema in the Gemini `tools` list, and `ToolDispatcher` routes calls to it — no other code changes needed.
 
-And if you wanted to share your plugin you can run this command:
-```python
+To share your plugin with others, package it:
+
+```bash
 python backend/plugin_tools/exporter.py <path/to/your/plugin-folder> --output <path/to/your/output-folder>
 ```
-And it gives you a .splugin file which you can install it via full-settings-window
+
+This produces a `.splugin` file, installable by anyone through **Settings → Full Settings → Plugin Manager**.
+
+## Platform Support
+
+Scarlett is currently **built and tested on Windows only**. Several plugins assume a Windows environment:
+
+- Shell commands like `cd /d` for drive switching
+- `pyautogui` and keyboard-control tools that assume a Windows desktop
+- Printer/smart-home discovery tools use Windows-oriented networking calls in places
+
+If you're on **macOS or Linux**, expect to need adjustments to the `cmd`, `keyboard`, and `files` plugins at minimum before those features work. Voice conversation, the web agent, and CAD generation are less platform-dependent and more likely to work out of the box. If you get Scarlett running on another OS, the maintainer welcomes a PR or a heads-up (see [Contributing](#contributing)).
+
+## Troubleshooting
+
+| Symptom | Likely cause / fix |
+|---|---|
+| Electron window never opens | Confirm `electron/main.js`, `index.html`, `vite.config.js`, `tailwind.config.js` exist at the repo root — they're required but not always present in every checkout. |
+| `npm run dev` hangs on "waiting for Vite" | Port `5173` may already be in use by another process — stop it or change the Vite port in `vite.config.js`. |
+| Backend fails to start / import errors | Make sure your virtual environment is activated before `pip install -r requirements.txt`, and that you're on Python 3.11+ (`python --version`). |
+| `playwright install` fails or browser doesn't launch | Re-run `playwright install` inside the activated venv; on Linux you may also need `playwright install-deps`. |
+| No response after hitting the mic button | Check `GEMINI_API_KEY` is set in `backend/.env` (or via Full Settings) and that the key has Live API access. |
+| Email plugin errors on first use | Confirm `credentials.json` is in `backend/plugins/email/` and you completed the [OAuth flow](#google-oauth-setup-gmail); delete `token.json` and retry if a previous auth attempt was interrupted. |
+| Printer/smart-home plugin finds no devices | These rely on local network discovery — make sure your machine, printer, and Kasa devices are all on the same network/subnet. |
+| Face auth doesn't unlock | Confirm face-auth is enabled in Settings and a reference image exists (`reference.jpg`) — this feature is off by default. |
 
 ## Before You Run This Yourself
 
-This repo was extracted directly from a working personal setup. Before you push it publicly or hand it to someone else, go through this list:
+This repo was extracted directly from a working personal setup. Before you push it publicly or hand it to someone else, go through this checklist:
 
-
-- [ ] **`backend/plugins/email/token.json`** — Google OAuth credentials/tokens for the email plugin. Never commit these.
-- [ ] **`backend/settings.json`** — contains real device info (printer name/IP, selected mic/webcam). Fine to keep structurally, but scrub personal identifiers or ship a `settings.example.json` instead and gitignore the real one.
-- [ ] Add a proper **`.gitignore`** (`.env`, `venv/`, `node_modules/`, `*.token.json`, `credentials.json`, `settings.json`, `reference.jpg`, `__pycache__/`, build output).
-- [ ] Confirm `electron/main.js`, `index.html`, `vite.config.js`, and `tailwind.config.js` are actually committed alongside `package.json` and `requirements.txt` — none of those four were part of what was reviewed while writing this README.
-
-## 🔐 Google OAuth Setup (Gmail)
-
-To use Scarlett's Gmail features, you need to create your own Google OAuth credentials.
-
-### 1. Create a Google Cloud Project
-
-Go to the [Google Cloud Console](https://console.cloud.google.com/) and create a new project.
-
-You can name it anything you want, for example:
-
-```text
-Scarlett Gmail
-```
-
-### 2. Enable the Gmail API
-
-In your Google Cloud project:
-
-1. Open **APIs & Services → Library**
-2. Search for **Gmail API**
-3. Open it
-4. Click **Enable**
-
-### 3. Configure OAuth Consent Screen
-
-Go to:
-
-**Google Auth Platform → Branding**
-
-Set the application name, for example:
-
-```text
-Scarlett
-```
-
-Then configure the required contact information.
-
-For **Audience**, select:
-
-```text
-External
-```
-
-> If your Google account is part of a Google Workspace organization and Scarlett is only for users in that organization, you may use **Internal** instead.
-
-### 4. Add Gmail Permissions
-
-Go to:
-
-**Google Auth Platform → Data Access**
-
-Add the Gmail scopes required by Scarlett:
-
-```text
-https://mail.google.com/
-```
-
-These permissions allow Scarlett to:
-
-* 📥 Read emails
-* 📤 Send emails
-* 🗑️ Modify/delete emails
-
-### 5. Create an OAuth Client
-
-Go to:
-
-**Google Auth Platform → Clients**
-
-Click:
-
-**+ Create Client**
-
-For **Application type**, select:
-
-```text
-Desktop app
-```
-
-Give it a name such as:
-
-```text
-Scarlett Gmail
-```
-
-Click **Create**.
-
-### 6. Download `credentials.json`
-
-After creating the OAuth client, download the generated JSON file.
-
-Rename it to:
-
-```text
-credentials.json
-```
-
-Then place it inside Scarlett's email plugin directory:
-
-```text
-Scarlett/
-└── backend/
-    └── plugins/
-        └── email/
-            ├── credentials.json
-            └── other files
-```
-
-### 7. Start Scarlett
-
-Run Scarlett normally.
-
-The first time you use a Gmail feature, Scarlett will open a Google authentication page in your browser.
-
-Sign in with your Google account and grant the requested permissions.
-
-After authorization, Scarlett will store your OAuth token locally and reuse it for future sessions.
-
-### ⚠️ Security
-
-**Never upload your ****`credentials.json`**** or ****`token.json`**** to GitHub.**
-
-These files contain authentication information and should remain local to your Scarlett installation.
-
-Make sure they are listed in your `.gitignore`:
-
-```gitignore
-**/credentials.json
-**/token.json
-```
-
-Each Scarlett installation should use its own Google OAuth credentials.
-
-
-## Credits
-
-This project began as a fork/extension of an earlier MIT-licensed assistant project by Nazir Louis. The original repository isn't linked here (link not currently available) — see [`LICENSE`](LICENSE) for the preserved original copyright notice.
+- [ ] **`backend/plugins/email/token.json`** — Google OAuth token for the email plugin. Never commit this.
+- [ ] **`backend/plugins/email/credentials.json`** — Google OAuth client credentials. Never commit this.
+- [ ] **`backend/settings.json`** — contains real device info (printer name/IP, selected mic/webcam). Fine to keep structurally, but scrub personal identifiers, or ship a `settings.example.json` and gitignore the real file.
+- [ ] **`backend/.env`** — contains your real API keys and email account. Never commit this; only `.env.example` should be tracked.
+- [ ] **`reference.jpg`** (or similar) — the face-auth reference image, if you've enabled that feature. Never commit this.
+- [ ] Add/verify a proper **`.gitignore`** covering at minimum: `.env`, `venv/`, `node_modules/`, `*.token.json`, `credentials.json`, `settings.json`, `reference.jpg`, `__pycache__/`, and build output (`dist/`, `build/`).
+- [ ] Confirm `electron/main.js`, `index.html`, `vite.config.js`, and `tailwind.config.js` are actually committed alongside `package.json` and `requirements.txt`.
+- [ ] Consider trimming unused dependencies from `requirements.txt` (e.g. `PySide6` — see the note in [Backend setup](#2-backend-setup)).
 
 ## Note
 
-This project is not compelete yet and I am working on it.
-If you found a bug in this project or just need some help please let me know.
-This project only tested on Windows but if someone wanted to add other OS version please let me know.
-```
-mahanbiabani12@gmail.com
-```
+This project is not complete yet and is actively being worked on. Only tested on Windows so far — if you get another OS working, a PR or a heads-up is welcome.
+
+Found a bug or need help? `mahanbiabani12@gmail.com`
 
 ## Contributing
 
-Contributions are welcome! Here's how:
+Contributions are welcome!
 
 1. **Fork** the repository.
-2. **Create a branch**:
-
+2. **Create a branch:**
    ```bash
    git checkout -b feature/amazing-feature
    ```
-3. **Commit** your changes:
-
+3. **Commit your changes:**
    ```bash
    git commit -m "Add amazing feature"
    ```
-4. **Push** to the branch:
-
+4. **Push to the branch:**
    ```bash
    git push origin feature/amazing-feature
    ```
 5. **Open a Pull Request** with a clear description.
 
+## Credits
+
+This project began as a fork/extension of an earlier MIT-licensed assistant project by Nazir Louis. The original repository isn't linked here (link not currently available) — see [`LICENSE`](LICENSE) for the preserved original copyright notice.
 
 ## License
 
