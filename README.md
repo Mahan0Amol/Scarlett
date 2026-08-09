@@ -18,6 +18,7 @@ Scarlett runs as a small **Electron desktop app** (React frontend) talking to a 
 - [Architecture](#architecture)
 - [Plugin System](#plugin-system)
 - [Getting Started](#getting-started)
+  - [Quick Install (recommended)](#quick-install-recommended)
   - [Prerequisites](#prerequisites)
   - [1. Clone the repo](#1-clone-the-repo)
   - [2. Backend setup](#2-backend-setup)
@@ -92,6 +93,28 @@ See [Writing Your Own Plugin](#writing-your-own-plugin) for a minimal example.
 
 ## Getting Started
 
+### Quick Install (recommended)
+
+Scarlett ships with setup scripts under [`scripts/`](scripts/) that check for Python/Node/git, ask before installing anything missing, clone the repo if needed, create the virtual environment, install all backend and frontend dependencies, and set up your `.env` file. Nothing is installed silently — each script asks for confirmation before touching your system.
+
+**Linux / macOS:**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Mahan0Amol/Scarlett/main/scripts/setup.sh | bash
+```
+
+**Windows (PowerShell):**
+
+```powershell
+irm https://raw.githubusercontent.com/Mahan0Amol/Scarlett/main/scripts/setup.ps1 | iex
+```
+
+**Windows (no PowerShell experience needed):** download [`scripts/setup.bat`](scripts/setup.bat) and double-click it. It downloads and runs `setup.ps1` for you with the execution policy bypassed for that run only — it doesn't change your system's PowerShell policy.
+
+> As with any script you pipe into your shell, it's worth opening the file and reading it first if you want to know exactly what it does before running it: [`setup.sh`](scripts/setup.sh) · [`setup.ps1`](scripts/setup.ps1) · [`setup.bat`](scripts/setup.bat).
+
+Once a script finishes, skip ahead to [Run it](#5-run-it) — steps 1–4 below are handled for you. The manual steps are still here for anyone who wants to do it by hand or understand what the script is doing.
+
 ### Prerequisites
 
 | Requirement | Notes |
@@ -107,6 +130,7 @@ This is an **Electron** app on the frontend — `package.json` points its `main`
 
 ```
 electron/main.js
+index.html
 vite.config.js
 tailwind.config.js
 ```
@@ -278,6 +302,11 @@ src/
 
 electron/
 └── main.js                     # Electron main process — window creation, frameless controls
+
+scripts/
+├── setup.sh                     # Linux/macOS installer — curl | bash
+├── setup.ps1                    # Windows installer — irm | iex
+└── setup.bat                    # Windows double-click wrapper around setup.ps1
 
 docs/                           # Screenshots / demo assets
 tests/                          # Test suite (see pytest.ini at repo root)
