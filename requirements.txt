@@ -1,5 +1,4 @@
 Pillow
-PySide6
 build123d
 exceptiongroup
 fastapi
