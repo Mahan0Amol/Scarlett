@@ -107,7 +107,6 @@ This is an **Electron** app on the frontend — `package.json` points its `main`
 
 ```
 electron/main.js
-index.html
 vite.config.js
 tailwind.config.js
 ```
@@ -136,7 +135,11 @@ pip install -r requirements.txt
 playwright install
 ```
 
-> **Note:** `PySide6` is listed in `requirements.txt` but is not currently imported anywhere in `backend/` — it's a leftover from an earlier desktop-GUI iteration of this project. It's safe to remove from `requirements.txt` if you confirm nothing in your fork uses it; leaving it in just costs extra install time and disk space.
+`requirements.txt` currently pulls in: `Pillow`, `PySide6`, `build123d`, `exceptiongroup`, `fastapi`, `google-genai`, `mediapipe`, `mss`, `mutagen`, `opencv-python`, `playwright`, `psutil`, `pyaudio`, `pyautogui`, `pydantic`, `python-dotenv`, `python-socketio`, `taskgroup`, `uvicorn`, `zeroconf`.
+
+> **Note:** `PySide6` is listed but not currently imported anywhere in `backend/` — it's a leftover from an earlier desktop-GUI iteration of this project. Safe to remove if you confirm nothing in your fork uses it; leaving it in just costs extra install time and disk space (it's a large package).
+>
+> `pyaudio` can be finicky to install on some systems — on Windows it usually installs fine from a wheel; on macOS/Linux you may need `portaudio` installed via your system package manager first (e.g. `brew install portaudio` or `apt install portaudio19-dev`) before `pip install pyaudio` succeeds.
 
 ### 3. Frontend setup
 
@@ -144,7 +147,11 @@ playwright install
 npm install
 ```
 
-Key runtime dependencies beyond React itself: `socket.io-client` (backend connection), `@mediapipe/tasks-vision` (hand-tracking cursor), `three` + `@react-three/fiber` + `@react-three/drei` (the 3D avatar/audio visualizer), `chess.js` / `react-chessboard` (chess plugin UI), `framer-motion` (animations), and `electron` itself.
+Key runtime dependencies (from `package.json`, package name `Scarlett-v2` v1.0.0): `socket.io-client` (backend connection), `@mediapipe/tasks-vision` (hand-tracking cursor), `three` + `@react-three/fiber` + `@react-three/drei` (the 3D avatar/audio visualizer), `chess.js` / `react-chessboard` (chess plugin UI), `framer-motion` (animations), `lucide-react` (icons), `clsx` / `tailwind-merge` (conditional styling), and `electron` itself.
+
+Dev tooling: `vite` + `@vitejs/plugin-react` (build), `tailwindcss` + `postcss` + `autoprefixer` (styling), `concurrently` + `wait-on` (orchestrates `npm run dev`), `cross-env`, and `electron` (currently pinned to `^28.2.0`).
+
+> **License field mismatch:** `package.json` currently declares `"license": "ISC"`, while the repo's [`LICENSE`](LICENSE) file is MIT. Pick one and make them consistent — MIT is almost certainly the intended one given the LICENSE file and the [Credits](#credits)/[License](#license) sections below, so the fix is updating `package.json`'s `license` field to `"MIT"`.
 
 ### 4. Configure environment variables
 
@@ -158,6 +165,8 @@ Environment variables are set up in **two stages** — a starter file first, the
    copy .env.example .env    # Windows
    cd ..
    ```
+
+   > ⚠️ The tracked `.env.example` currently ships with real personal defaults for `EMAIL_ADDRESS`, `USER_NAME`, and `USER_KNOWN_AS` instead of generic placeholders. Overwrite these with your own values in your local `.env` (or via the Full Settings UI in the next step) — and if you maintain this repo publicly, replace the placeholder values in `.env.example` itself so you're not shipping someone's real email address in the template.
 
 2. Start Scarlett once (see [Run it](#5-run-it) below).
 3. Click the **settings icon** in the toolbar → **Full Settings** → find the **.env** section.
@@ -341,7 +350,9 @@ This repo was extracted directly from a working personal setup. Before you push 
 - [ ] **`backend/plugins/email/credentials.json`** — Google OAuth client credentials. Never commit this.
 - [ ] **`backend/settings.json`** — contains real device info (printer name/IP, selected mic/webcam). Fine to keep structurally, but scrub personal identifiers, or ship a `settings.example.json` and gitignore the real file.
 - [ ] **`backend/.env`** — contains your real API keys and email account. Never commit this; only `.env.example` should be tracked.
+- [ ] **`backend/.env.example`** — as tracked today, its defaults for `EMAIL_ADDRESS`, `USER_NAME`, and `USER_KNOWN_AS` are real personal values, not generic placeholders. Replace them with placeholders like `your_email@gmail.com` / `Your Name` before others clone this repo.
 - [ ] **`reference.jpg`** (or similar) — the face-auth reference image, if you've enabled that feature. Never commit this.
+- [ ] **`package.json`**`.license` field says `ISC`, but [`LICENSE`](LICENSE) is MIT — reconcile the two (see note in [Frontend setup](#3-frontend-setup)).
 - [ ] Add/verify a proper **`.gitignore`** covering at minimum: `.env`, `venv/`, `node_modules/`, `*.token.json`, `credentials.json`, `settings.json`, `reference.jpg`, `__pycache__/`, and build output (`dist/`, `build/`).
 - [ ] Confirm `electron/main.js`, `index.html`, `vite.config.js`, and `tailwind.config.js` are actually committed alongside `package.json` and `requirements.txt`.
 - [ ] Consider trimming unused dependencies from `requirements.txt` (e.g. `PySide6` — see the note in [Backend setup](#2-backend-setup)).
