@@ -15,6 +15,18 @@
 
 $ErrorActionPreference = "Stop"
 
+# PowerShell 7.3+ introduced $PSNativeCommandUseErrorActionPreference, which
+# defaults to $true. When enabled, ANY stderr output from a native command
+# (git, uv, npm, playwright, winget, ...) is treated as a terminating error
+# under $ErrorActionPreference = "Stop" - even when the command succeeded
+# and the stderr text was just a normal progress/info message. This is the
+# actual cause of the "Setup stopped unexpectedly: <some normal output
+# line>" failures, and it applies regardless of any local
+# $ErrorActionPreference toggling around individual command calls. Disable
+# it globally. This line is a harmless no-op on Windows PowerShell 5.1,
+# where the variable doesn't exist.
+$PSNativeCommandUseErrorActionPreference = $false
+
 # ---------------------------------------------------------------------------
 # Style
 # ---------------------------------------------------------------------------
