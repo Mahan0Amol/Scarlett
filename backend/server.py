@@ -6,7 +6,6 @@ import ipaddress
 import socket
 import sys
 import asyncio
-import chess
 
 # Fix for asyncio subprocess support on Windows
 # MUST BE SET BEFORE OTHER IMPORTS
@@ -1052,47 +1051,6 @@ async def autocomplete_cmd(sid, data):
     if matches:
         await sio.emit('cmd_autocomplete', {'matches': matches}, room=sid)
 
-
-# ====================== CHESS GAME ======================
-@sio.event
-async def chess_user_move(sid, data):
-    """When user makes a move on UI, update backend and notify AI"""
-    move_uci = data.get('move')
-    agent = get_chess_agent()
-    
-    try:
-        move = chess.Move.from_uci(move_uci)
-        if move not in agent.board.legal_moves:
-            await sio.emit('chess_error', {'error': 'Illegal move'}, room=sid)
-            return
-
-        agent.board.push(move)
-        await sio.emit('chess_state', {
-            "fen": agent.board.fen(),
-            "turn": "white" if agent.board.turn == chess.WHITE else "black",
-            "is_game_over": agent.board.is_game_over()
-        }, room=sid)
-
-        if agent.board.is_game_over():
-            await sio.emit('status', {'msg': 'Chess game over.'})
-            if audio_loop:
-                await audio_loop.notify_model("System: Sir won the chess game. Game over.")
-        else:
-            # Notify AI that it's its turn
-            if audio_loop:
-                await audio_loop.notify_model(f"System: Sir played {move_uci}. It is your turn. Use play_chess_move to play.")
-                
-    except Exception as e:
-        await sio.emit('chess_error', {'error': str(e)}, room=sid)
-
-@sio.event
-async def chess_state_request(sid):
-    agent = get_chess_agent()
-    await sio.emit('chess_state', {
-        "fen": agent.board.fen(),
-        "turn": "white" if agent.board.turn == chess.WHITE else "black",
-        "is_game_over": agent.board.is_game_over()
-    }, room=sid)
 
 
 # ====================== FULL SETTINGS WEB UI ======================
