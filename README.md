@@ -116,9 +116,32 @@ npm install
 
 Key runtime pieces beyond React itself: `socket.io-client` (backend connection), `@mediapipe/tasks-vision` (hand-tracking cursor), `three` + `@react-three/fiber` + `@react-three/drei` (the 3D avatar/audio visualizer), `chess.js` / `react-chessboard` (chess plugin UI), `framer-motion` (animations), and `electron` itself.
 
-### Environment variables
+### Running it
 
-Go to full settings window and add these from .env section
+## Normal mode
+
+```bash
+# terminal  — frontend + Electron shell + starting backend
+npm run dev               # starts Vite, waits for it, then launches Electron
+```
+## Developer Mode
+
+```bash
+# terminal 1 — backend
+python backend/server.py         # serves on http://127.0.0.1:8000
+
+# terminal 2 — frontend + Electron shell
+npm run dev               # starts Vite, waits for it, then launches Electron
+```
+
+`npm run dev` runs `vite` and `electron .` together (via `concurrently` + `wait-on`), so the Electron window opens automatically once the Vite dev server on port 5173 is ready. Use `npm run build` for a production Vite build and `npm start` to launch Electron against it. Hit the mic button to start talking.
+
+
+### Environment 
+
+First go to backend folder and rename the .env.example to .env
+
+Then agfter starting project go to full settings window from settings icon in the Toolbar and add these from .env section
 
 | Variable | Purpose |
 |---|---|
@@ -132,18 +155,6 @@ Go to full settings window and add these from .env section
 | `OS` | Target OS string, used by a couple of platform-specific tools |
 
 `backend/settings.json` holds everything that changes at runtime through the Settings UI instead of `.env`: face-auth toggle, per-tool enable/disable (`tool_permissions`), known printers/Kasa devices/door locks, selected mic/speaker/webcam, and cursor sensitivity for the hand-tracking cursor. It's created with sane defaults on first run if missing.
-
-### Running it
-
-```bash
-# terminal 1 — backend
-python backend/server.py         # serves on http://127.0.0.1:8000
-
-# terminal 2 — frontend + Electron shell
-npm run dev               # starts Vite, waits for it, then launches Electron
-```
-
-`npm run dev` runs `vite` and `electron .` together (via `concurrently` + `wait-on`), so the Electron window opens automatically once the Vite dev server on port 5173 is ready. Use `npm run build` for a production Vite build and `npm start` to launch Electron against it. Hit the mic button to start talking.
 
 ## Project Structure
 
