@@ -116,15 +116,15 @@ npm install
 
 Key runtime pieces beyond React itself: `socket.io-client` (backend connection), `@mediapipe/tasks-vision` (hand-tracking cursor), `three` + `@react-three/fiber` + `@react-three/drei` (the 3D avatar/audio visualizer), `chess.js` / `react-chessboard` (chess plugin UI), `framer-motion` (animations), and `electron` itself.
 
-### Running it
+## Running it
 
-## Normal mode
+### Normal mode
 
 ```bash
 # terminal  — frontend + Electron shell + starting backend
 npm run dev               # starts Vite, waits for it, then launches Electron
 ```
-## Developer Mode
+### Developer Mode
 
 ```bash
 # terminal 1 — backend
