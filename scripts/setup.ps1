@@ -386,17 +386,22 @@ Require-Confirm "Install Python dependencies from requirements.txt (via uv)?"
 Info "Installing Python dependencies - this can take a few minutes."
 Info "Full output is being logged to $LogFile ..."
 Log "COMMAND $($script:UvCmd) pip install --python $VenvPy -r requirements.txt"
-$exitCode = Invoke-Logged -Command $script:UvCmd -Arguments @(
+ $exitCode = Invoke-Logged -Command $script:UvCmd -Arguments @(
     "pip", "install", "--python", $VenvPy, "-r", "requirements.txt"
 )
 if ($exitCode -ne 0) {
     Err "Python dependency install failed (exit $exitCode) - see $LogFile for details"
     exit 1
 }
-$installedPkgs = & $script:UvCmd pip list --python $VenvPy 2>$null
+
+ $prevEAP = $ErrorActionPreference
+ $ErrorActionPreference = "Continue"
+ $installedPkgs = & $script:UvCmd pip list --python $VenvPy 2>$null
+ $ErrorActionPreference = $prevEAP
+
 "" | Out-File -FilePath $LogFile -Append
 "----- Python packages after install -----" | Out-File -FilePath $LogFile -Append
-$installedPkgs | Out-File -FilePath $LogFile -Append
+ $installedPkgs | Out-File -FilePath $LogFile -Append
 "------------------------------------------" | Out-File -FilePath $LogFile -Append
 Ok "Python dependencies installed - full list in $LogFile"
 
