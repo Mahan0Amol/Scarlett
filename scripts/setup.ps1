@@ -261,32 +261,63 @@ Show-Step "Scarlett repository"
 if ((Test-Path "backend/server.py") -and (Test-Path "package.json")) {
     Ok "Already inside the Scarlett repo - skipping clone."
 }
-elseif (Test-Path $RepoDir) {
-    Warn "'$RepoDir' already exists - using it instead of re-cloning."
+elseif (Test-Path "$RepoDir\.git") {
+    Warn "'$RepoDir' is already a Scarlett repository - using it."
     Set-Location $RepoDir
+}
+elseif (Test-Path $RepoDir) {
+    Err "'$RepoDir' already exists but is not a valid git repository."
+    Err "Please remove it or choose another directory, then run setup again."
+    exit 1
 }
 else {
     Require-Confirm "Clone the Scarlett repository into .\$RepoDir?"
+
     Info "Cloning Scarlett..."
     Log "COMMAND git clone $RepoUrl $RepoDir"
 
-    $cloneOutput = git clone $RepoUrl $RepoDir 2>&1
-    $cloneExitCode = $LASTEXITCODE
+    try {
+        # git clone normally writes its progress messages to stderr.
+        # If $ErrorActionPreference is "Stop", PowerShell would turn
+        # those stderr lines into terminating errors even on success.
+        # Temporarily switch to "Continue" while running git, and
+        # convert any ErrorRecord objects to plain strings.
+        $prevEAP = $ErrorActionPreference
+        $ErrorActionPreference = "Continue"
 
-    $cloneOutput | Tee-Object -FilePath $LogFile -Append
+        $cloneOutput = & git clone $RepoUrl $RepoDir 2>&1 | ForEach-Object { $_.ToString() }
+        $cloneExitCode = $LASTEXITCODE
 
-    if ($cloneExitCode -ne 0) {
-        if (Test-Path "$RepoDir\.git") {
-            Warn "Git returned an error code, but repository appears complete."
+        $ErrorActionPreference = $prevEAP
+
+        # Save git output to log
+        $cloneOutput | Out-File -FilePath $LogFile -Append -Encoding utf8
+
+        # Show git output to user
+        if ($cloneOutput) {
+            $cloneOutput | ForEach-Object {
+                Write-Host $_
+            }
         }
-        else {
-            Err "Clone failed. See $LogFile for details."
-            exit 1
+
+        if ($cloneExitCode -ne 0) {
+            if (Test-Path "$RepoDir\.git") {
+                Warn "Git returned exit code $cloneExitCode, but repository appears complete."
+            }
+            else {
+                Err "Clone failed. See $LogFile for details."
+                exit 1
+            }
         }
+
+        Ok "Cloned into .\$RepoDir"
+        Set-Location $RepoDir
     }
-
-    Ok "Cloned into .\$RepoDir"
-    Set-Location $RepoDir
+    catch {
+        Err "Unexpected error during git clone: $_"
+        Err "See $LogFile for details."
+        exit 1
+    }
 }
 
 # ---- 7. virtual environment --------------------------------------------------------
