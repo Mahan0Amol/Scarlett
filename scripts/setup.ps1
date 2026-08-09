@@ -257,17 +257,34 @@ if ($found) {
 
 # ---- 6. clone repo (skip if already inside it) ----------------------------------
 Show-Step "Scarlett repository"
+
 if ((Test-Path "backend/server.py") -and (Test-Path "package.json")) {
     Ok "Already inside the Scarlett repo - skipping clone."
-} elseif (Test-Path $RepoDir) {
+}
+elseif (Test-Path $RepoDir) {
     Warn "'$RepoDir' already exists - using it instead of re-cloning."
     Set-Location $RepoDir
-} else {
+}
+else {
     Require-Confirm "Clone the Scarlett repository into .\$RepoDir?"
     Info "Cloning Scarlett..."
     Log "COMMAND git clone $RepoUrl $RepoDir"
-    git clone $RepoUrl $RepoDir 2>&1 | Tee-Object -FilePath $LogFile -Append
-    if ($LASTEXITCODE -ne 0) { Err "Clone failed. See $LogFile for details."; exit 1 }
+
+    $cloneOutput = git clone $RepoUrl $RepoDir 2>&1
+    $cloneExitCode = $LASTEXITCODE
+
+    $cloneOutput | Tee-Object -FilePath $LogFile -Append
+
+    if ($cloneExitCode -ne 0) {
+        if (Test-Path "$RepoDir\.git") {
+            Warn "Git returned an error code, but repository appears complete."
+        }
+        else {
+            Err "Clone failed. See $LogFile for details."
+            exit 1
+        }
+    }
+
     Ok "Cloned into .\$RepoDir"
     Set-Location $RepoDir
 }
