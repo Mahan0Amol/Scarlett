@@ -105,6 +105,8 @@ curl -fsSL https://raw.githubusercontent.com/Mahan0Amol/Scarlett/main/scripts/se
 
 **Windows (PowerShell):**
 
+At first press Win key on your keyboard then type "PowerShell", run it as Administrator and then paste the line blow and press Enter:
+
 ```powershell
 irm https://raw.githubusercontent.com/Mahan0Amol/Scarlett/main/scripts/setup.ps1 | iex
 ```
