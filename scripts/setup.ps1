@@ -55,6 +55,15 @@ function Ok($msg)   { Write-Host "  $script:SymOk $msg" -ForegroundColor Green; 
 function Warn($msg) { Write-Host "  $script:SymWarn $msg" -ForegroundColor Yellow; Log "WARN  $msg" }
 function Err($msg)  { Write-Host "  $script:SymCross $msg" -ForegroundColor Red; Log "ERROR $msg" }
 
+# Every `catch {}` in this script logs before deciding what to do next -
+# a silently swallowed exception is the one thing the Hermes review flagged
+# and it's cheap to avoid. Call this from any catch block instead of a bare
+# empty body.
+function Log-Exception($context, $err) {
+    Log "EXCEPTION [$context] $($err.Exception.Message)"
+    Log "$($err.ScriptStackTrace)"
+}
+
 # Runs a native command (exe + args) without letting $ErrorActionPreference =
 # "Stop" turn its normal stderr output (progress messages, version banners,
 # npm/uv warnings, etc.) into a terminating error. Merges stdout+stderr,
@@ -62,6 +71,10 @@ function Err($msg)  { Write-Host "  $script:SymCross $msg" -ForegroundColor Red;
 # and returns the process's real exit code (from $LASTEXITCODE) instead of
 # throwing. Use this for every external tool invocation whose output gets
 # piped/merged - that's the pattern that was silently aborting the script.
+#
+# Also captures the merged output into $script:LastInvokeOutput so callers
+# can inspect it afterwards (cert-error detection, debug-log lookup, etc.)
+# without re-running the command or buffering twice.
 function Invoke-Logged {
     param(
         [Parameter(Mandatory)][string]$Command,
@@ -71,19 +84,90 @@ function Invoke-Logged {
     $prevEAP = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
 
+    $captured = New-Object System.Collections.Generic.List[string]
+
     # Stream each line to the console and the log file as it arrives,
     # instead of buffering into a variable (which would only show output
     # after the whole command finishes).
     & $Command @Arguments 2>&1 | ForEach-Object {
         $line = $_.ToString()
+        $captured.Add($line)
         $line | Out-File -FilePath $LogFile -Append -Encoding utf8
         if (-not $Quiet) { Write-Host $line }
     }
     $exitCode = $LASTEXITCODE
 
     $ErrorActionPreference = $prevEAP
+    $script:LastInvokeOutput = $captured -join "`n"
 
     return $exitCode
+}
+
+# Inspect the output of a failed pip/npm/uv command for the classic
+# corporate-proxy / missing-root-CA signature and print a fix instead of
+# leaving the user to decode "unable to get local issuer certificate"
+# themselves. Returns $true when it recognized (and explained) the failure.
+function Show-CertHint($output) {
+    if (-not $output) { return $false }
+    $isCertError = $output -match "unable to get local issuer certificate" `
+        -or $output -match "self.signed certificate" `
+        -or $output -match "CERTIFICATE_VERIFY_FAILED" `
+        -or $output -match "UNABLE_TO_GET_ISSUER_CERT_LOCALLY" `
+        -or $output -match "SELF_SIGNED_CERT_IN_CHAIN"
+    if (-not $isCertError) { return $false }
+    Warn "This looks like a TLS certificate-trust failure, not a real install problem."
+    Info "  A corporate proxy or antivirus is likely intercepting HTTPS and presenting a"
+    Info "  certificate your tools don't trust. To fix, point them at your org's root CA:"
+    Info "    1. Get the corporate root CA as a .pem/.crt from your IT team."
+    Info "    2. For Node/npm:   setx NODE_EXTRA_CA_CERTS `"C:\path\to\corp-ca.pem`""
+    Info "    3. For pip/uv:     setx SSL_CERT_FILE `"C:\path\to\corp-ca.pem`""
+    Info "    4. Open a NEW terminal (so the env var takes effect) and re-run this script."
+    Info "  Quick (less secure) alternative for npm only:"
+    Info "    npm config set strict-ssl false   (re-enable afterwards: npm config set strict-ssl true)"
+    return $true
+}
+
+# On failure, npm prints only a terse summary; the real evidence lives in
+# npm's own debug log. Locate and tail it so the console/log file is a
+# self-contained diagnosis instead of "exit 1, details somewhere in a cache
+# folder nobody will find."
+function Show-NpmDebugLogTail([int]$TailLines = 100) {
+    $output = $script:LastInvokeOutput
+    $logPath = $null
+    if ($output -and $output -match "A complete log of this run can be found in:\s*(?<path>[^\r\n]+)") {
+        $candidate = $Matches['path'].Trim()
+        if (Test-Path -LiteralPath $candidate) { $logPath = $candidate }
+    }
+    if (-not $logPath -and (Test-Command npm)) {
+        try {
+            $prevEAP = $ErrorActionPreference
+            $ErrorActionPreference = "Continue"
+            $cacheDir = (npm config get cache 2>$null | Select-Object -Last 1)
+            $ErrorActionPreference = $prevEAP
+            if ($cacheDir) {
+                $logsDir = Join-Path ($cacheDir.Trim()) "_logs"
+                if (Test-Path -LiteralPath $logsDir) {
+                    $newest = Get-ChildItem -LiteralPath $logsDir -Filter "*-debug-*.log" -ErrorAction SilentlyContinue |
+                        Sort-Object LastWriteTime -Descending | Select-Object -First 1
+                    if ($newest) { $logPath = $newest.FullName }
+                }
+            }
+        } catch { Log-Exception "Show-NpmDebugLogTail:cache-lookup" $_ }
+    }
+    if (-not $logPath) {
+        Warn "npm debug log could not be located - see $LogFile for what npm printed."
+        return
+    }
+    try {
+        $tail = Get-Content -LiteralPath $logPath -Tail $TailLines -ErrorAction Stop
+        Log "---- npm debug log tail: $logPath ----"
+        $tail | Out-File -FilePath $LogFile -Append -Encoding utf8
+        Log "---- end npm debug log ----"
+        Warn "npm debug log tail written to $LogFile ($logPath)"
+    } catch {
+        Log-Exception "Show-NpmDebugLogTail:read" $_
+        Warn "Could not read npm debug log at $logPath - see $LogFile"
+    }
 }
 
 function Show-Banner {
@@ -167,6 +251,21 @@ function Offer-WingetInstall($name, $wingetId) {
         "install", "--id", $wingetId, "-e", "--silent",
         "--accept-package-agreements", "--accept-source-agreements"
     )
+    # 0x8A15002B / -1978335189 = APPINSTALLER_CLI_ERROR_UPDATE_NOT_APPLICABLE.
+    # winget treats a re-`install` of a package it already has registered as
+    # an upgrade, finds no newer version, and bails with this code - even
+    # when the binary is missing from PATH (stale registration, files
+    # removed outside winget, or a missing shim). Since we're only here
+    # because the tool was NOT found, a plain install dead-ends forever;
+    # retry once with --force to repair the registration.
+    if ($exitCode -eq -1978335189) {
+        Warn "winget reports $name already registered but not newer - retrying with --force to repair it."
+        Log "COMMAND winget install --id $wingetId -e --silent --force --accept-package-agreements --accept-source-agreements"
+        $exitCode = Invoke-Logged -Command "winget" -Arguments @(
+            "install", "--id", $wingetId, "-e", "--silent", "--force",
+            "--accept-package-agreements", "--accept-source-agreements"
+        )
+    }
     $success = $exitCode -eq 0
     if ($success) { Ok "$name installed" } else { Err "$name install failed (exit $exitCode) - see $LogFile" }
     Refresh-Path
@@ -198,7 +297,7 @@ function Find-GoodPython {
                         return $candidate
                     }
                 }
-            } catch {}
+            } catch { Log-Exception "Find-GoodPython:$candidate" $_ }
         }
     }
     return $null
@@ -298,7 +397,9 @@ if ($found) {
         }
         $ErrorActionPreference = $prevEAP
     } catch {
-        Err "uv installer failed: $_"
+        Log-Exception "uv-install" $_
+        Err "uv installer failed: $($_.Exception.Message)"
+        Warn "See $LogFile for details. Install manually: https://docs.astral.sh/uv/getting-started/installation/"
         exit 1
     }
     Refresh-Path
@@ -315,69 +416,197 @@ if ($found) {
 # ---- 6. clone repo (skip if already inside it) ----------------------------------
 Show-Step "Scarlett repository"
 
+# A directory that merely contains a `.git` folder is not necessarily a
+# usable repository - an interrupted clone can leave a `.git` with no
+# resolvable HEAD, which later breaks `git pull`/`git checkout` in ways
+# that look nothing like "clone failed." Verify with git itself rather
+# than trusting Test-Path.
+function Test-ValidGitRepo($path) {
+    if (-not (Test-Path (Join-Path $path ".git"))) { return $false }
+    Push-Location $path
+    try {
+        $prevEAP = $ErrorActionPreference
+        $ErrorActionPreference = "Continue"
+        $global:LASTEXITCODE = 0
+        $null = git rev-parse --is-inside-work-tree 2>$null
+        $revParseOk = ($LASTEXITCODE -eq 0)
+        $global:LASTEXITCODE = 0
+        $null = git rev-parse --verify HEAD 2>$null
+        $hasCommit = ($LASTEXITCODE -eq 0)
+        $ErrorActionPreference = $prevEAP
+        return ($revParseOk -and $hasCommit)
+    } catch {
+        Log-Exception "Test-ValidGitRepo" $_
+        return $false
+    } finally {
+        Pop-Location
+    }
+}
+
+# Clones $RepoUrl into $RepoDir. Tries `git clone` first; if that fails
+# (network hiccup, corporate proxy blocking the git protocol, etc.) falls
+# back to downloading the branch as a ZIP so a flaky connection doesn't
+# hard-block setup. The ZIP path re-inits git so later `git pull`-style
+# updates still work.
+function Install-ScarlettRepo {
+    Info "Cloning Scarlett..."
+    Log "COMMAND git clone $RepoUrl $RepoDir"
+    $cloneExitCode = Invoke-Logged -Command "git" -Arguments @("clone", $RepoUrl, $RepoDir)
+
+    if ($cloneExitCode -eq 0 -and (Test-ValidGitRepo $RepoDir)) {
+        Ok "Cloned into .\$RepoDir"
+        return $true
+    }
+
+    if (Test-Path $RepoDir) {
+        Remove-Item -Recurse -Force $RepoDir -ErrorAction SilentlyContinue
+    }
+
+    Warn "git clone failed (exit $cloneExitCode) - trying a ZIP download instead."
+    Show-CertHint $script:LastInvokeOutput | Out-Null
+    try {
+        $zipUrl = "https://github.com/Mahan0Amol/Scarlett/archive/refs/heads/main.zip"
+        $zipPath = Join-Path $env:TEMP "scarlett-setup-download.zip"
+        $extractPath = Join-Path $env:TEMP "scarlett-setup-extract"
+
+        Invoke-WebRequest -Uri $zipUrl -OutFile $zipPath -UseBasicParsing
+        if (Test-Path $extractPath) { Remove-Item -Recurse -Force $extractPath }
+        Expand-Archive -Path $zipPath -DestinationPath $extractPath -Force
+
+        $extractedDir = Get-ChildItem $extractPath -Directory | Select-Object -First 1
+        if (-not $extractedDir) { throw "ZIP archive did not contain a top-level folder." }
+
+        Move-Item $extractedDir.FullName $RepoDir -Force
+        Ok "Downloaded and extracted ZIP into .\$RepoDir"
+
+        # Re-init git so `git pull` works on a future re-run of this script.
+        Push-Location $RepoDir
+        try {
+            git init 2>$null | Out-Null
+            git remote add origin $RepoUrl 2>$null | Out-Null
+            $prevEAP = $ErrorActionPreference
+            $ErrorActionPreference = "Continue"
+            git fetch --depth 1 origin main 2>&1 | Out-Null
+            if ($LASTEXITCODE -eq 0) {
+                git checkout -f -B main FETCH_HEAD 2>&1 | Out-Null
+            } else {
+                Warn "Repo initialized from ZIP, but couldn't re-attach it to origin/main for future updates."
+            }
+            $ErrorActionPreference = $prevEAP
+        } finally {
+            Pop-Location
+        }
+
+        Remove-Item -Force $zipPath -ErrorAction SilentlyContinue
+        Remove-Item -Recurse -Force $extractPath -ErrorAction SilentlyContinue
+        return $true
+    } catch {
+        Log-Exception "Install-ScarlettRepo:zip-fallback" $_
+        Err "ZIP download also failed: $($_.Exception.Message)"
+        Err "See $LogFile for details."
+        return $false
+    }
+}
+
 if ((Test-Path "backend/server.py") -and (Test-Path "package.json")) {
     Ok "Already inside the Scarlett repo - skipping clone."
 }
-elseif (Test-Path "$RepoDir\.git") {
+elseif (Test-ValidGitRepo $RepoDir) {
     Warn "'$RepoDir' is already a Scarlett repository - using it."
     Set-Location $RepoDir
 }
 elseif (Test-Path $RepoDir) {
-    Err "'$RepoDir' already exists but is not a valid git repository."
-    Err "Please remove it or choose another directory, then run setup again."
-    exit 1
+    # Present but broken (interrupted clone, corrupted .git, or not a repo
+    # at all). Move it aside rather than deleting outright - never destroy
+    # something the user might still want without asking first.
+    Warn "'$RepoDir' already exists but is not a valid, complete git repository."
+    if (Confirm "Move it aside and re-clone into a fresh .\$RepoDir?" "yes") {
+        $backupDir = "$RepoDir.broken-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
+        try {
+            Move-Item -LiteralPath $RepoDir -Destination $backupDir -ErrorAction Stop
+            Warn "Moved the old folder to .\$backupDir"
+        } catch {
+            Log-Exception "repo-move-aside" $_
+            Err "Could not move '$RepoDir' aside: $($_.Exception.Message)"
+            Err "Close any programs using files in it (editors, terminals) and try again."
+            exit 1
+        }
+        if (-not (Install-ScarlettRepo)) { exit 1 }
+        Set-Location $RepoDir
+    } else {
+        Err "Please remove or rename '$RepoDir' yourself, then run setup again."
+        exit 1
+    }
 }
 else {
     Require-Confirm "Clone the Scarlett repository into .\$RepoDir?"
-
-    Info "Cloning Scarlett..."
-    Log "COMMAND git clone $RepoUrl $RepoDir"
-
-    try {
-        # git clone normally writes its progress messages to stderr.
-        # Invoke-Logged relaxes $ErrorActionPreference while it runs so
-        # those lines aren't treated as terminating errors even on success.
-        $cloneExitCode = Invoke-Logged -Command "git" -Arguments @("clone", $RepoUrl, $RepoDir)
-
-        if ($cloneExitCode -ne 0) {
-            if (Test-Path "$RepoDir\.git") {
-                Warn "Git returned exit code $cloneExitCode, but repository appears complete."
-            }
-            else {
-                Err "Clone failed. See $LogFile for details."
-                exit 1
-            }
-        }
-
-        Ok "Cloned into .\$RepoDir"
-        Set-Location $RepoDir
-    }
-    catch {
-        Err "Unexpected error during git clone: $_"
-        Err "See $LogFile for details."
-        exit 1
-    }
+    if (-not (Install-ScarlettRepo)) { exit 1 }
+    Set-Location $RepoDir
 }
 
 # ---- 7. virtual environment --------------------------------------------------------
 Show-Step "Python virtual environment"
 $VenvPy = "venv\Scripts\python.exe"
+
+# Creates .\venv and verifies it actually worked - the previous version of
+# this script never checked `python -m venv`'s exit code, so a failure
+# (e.g. antivirus locking a file mid-write) looked like success until the
+# next step failed with a confusing "python.exe not found."
+function New-ScarlettVenv {
+    Info "Creating virtual environment..."
+    Log "COMMAND $pythonBin -m venv venv"
+    $exitCode = Invoke-Logged -Command $pythonBin -Arguments @("-m", "venv", "venv")
+    if ($exitCode -ne 0 -or -not (Test-Path $VenvPy)) {
+        Err "Virtual environment creation failed (exit $exitCode) - see $LogFile for details"
+        exit 1
+    }
+    Ok "Virtual environment ready ($(& $VenvPy --version))"
+}
+
 if (Test-Path "venv") {
     if (Test-Path $VenvPy) {
         Ok "Virtual environment already exists ($(& $VenvPy --version))"
     } else {
         Warn "A 'venv' folder exists but looks broken."
         Require-Confirm "Remove it and create a fresh virtual environment?"
-        Remove-Item -Recurse -Force "venv"
-        Info "Creating virtual environment..."
-        & $pythonBin -m venv venv
-        Ok "Virtual environment ready ($(& $VenvPy --version))"
+        # On Windows, a still-running Scarlett process (backend server left
+        # open in another terminal) holds venv's .pyd files open and turns
+        # a plain delete into "Access to the path is denied." Rename-then-
+        # delete works even while a handle is held (renames don't require
+        # the target to be unmapped, only in-place delete/replace does),
+        # so the fresh venv can be created immediately either way.
+        $staleName = "venv.stale.$(Get-Date -Format 'yyyyMMddHHmmss')"
+        $removed = $false
+        try {
+            Rename-Item -Path "venv" -NewName $staleName -ErrorAction Stop
+            Remove-Item -Recurse -Force $staleName -ErrorAction SilentlyContinue
+            $removed = $true
+            if (Test-Path $staleName) {
+                Warn "Old venv parked at .\$staleName (something still has it open); safe to delete manually later."
+            }
+        } catch {
+            Log-Exception "venv-rename-aside" $_
+            Warn "Could not rename the old venv aside ($($_.Exception.Message)) - trying a direct delete."
+        }
+        if (-not $removed) {
+            Remove-Item -Recurse -Force "venv" -ErrorAction SilentlyContinue
+            if (Test-Path "venv") {
+                Start-Sleep -Seconds 2
+                try {
+                    Remove-Item -Recurse -Force "venv" -ErrorAction Stop
+                } catch {
+                    Log-Exception "venv-delete-retry" $_
+                    Err "Could not remove the old 'venv' folder: $($_.Exception.Message)"
+                    Err "Close any running Scarlett/Python processes using it and try again."
+                    exit 1
+                }
+            }
+        }
+        New-ScarlettVenv
     }
 } else {
     Require-Confirm "Create a Python virtual environment in .\venv?"
-    Info "Creating virtual environment..."
-    & $pythonBin -m venv venv
-    Ok "Virtual environment ready ($(& $VenvPy --version))"
+    New-ScarlettVenv
 }
 
 # ---- 8. python dependencies (installed with uv, into the venv above) -------------
@@ -386,22 +615,25 @@ Require-Confirm "Install Python dependencies from requirements.txt (via uv)?"
 Info "Installing Python dependencies - this can take a few minutes."
 Info "Full output is being logged to $LogFile ..."
 Log "COMMAND $($script:UvCmd) pip install --python $VenvPy -r requirements.txt"
- $exitCode = Invoke-Logged -Command $script:UvCmd -Arguments @(
+$exitCode = Invoke-Logged -Command $script:UvCmd -Arguments @(
     "pip", "install", "--python", $VenvPy, "-r", "requirements.txt"
 )
 if ($exitCode -ne 0) {
     Err "Python dependency install failed (exit $exitCode) - see $LogFile for details"
+    if (-not (Show-CertHint $script:LastInvokeOutput)) {
+        Warn "Common fixes: check your internet connection, or re-run with a VPN/proxy disabled."
+    }
     exit 1
 }
 
- $prevEAP = $ErrorActionPreference
- $ErrorActionPreference = "Continue"
- $installedPkgs = & $script:UvCmd pip list --python $VenvPy 2>$null
- $ErrorActionPreference = $prevEAP
+$prevEAP = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+$installedPkgs = & $script:UvCmd pip list --python $VenvPy 2>$null
+$ErrorActionPreference = $prevEAP
 
 "" | Out-File -FilePath $LogFile -Append
 "----- Python packages after install -----" | Out-File -FilePath $LogFile -Append
- $installedPkgs | Out-File -FilePath $LogFile -Append
+$installedPkgs | Out-File -FilePath $LogFile -Append
 "------------------------------------------" | Out-File -FilePath $LogFile -Append
 Ok "Python dependencies installed - full list in $LogFile"
 
@@ -413,6 +645,8 @@ if (Confirm "Install Playwright browser binaries (needed for browser automation 
     $exitCode = Invoke-Logged -Command $VenvPy -Arguments @("-m", "playwright", "install")
     if ($exitCode -ne 0) {
         Warn "Playwright browser install failed - see $LogFile for details."
+        Show-CertHint $script:LastInvokeOutput | Out-Null
+        Warn "You can retry later with: $VenvPy -m playwright install"
     } else {
         Ok "Playwright ready"
     }
@@ -452,6 +686,9 @@ Log "COMMAND npm install"
 $exitCode = Invoke-Logged -Command "npm" -Arguments @("install")
 if ($exitCode -ne 0) {
     Err "npm install failed (exit $exitCode) - see $LogFile for details"
+    if (-not (Show-CertHint $script:LastInvokeOutput)) {
+        Show-NpmDebugLogTail
+    }
     exit 1
 }
 "" | Out-File -FilePath $LogFile -Append
