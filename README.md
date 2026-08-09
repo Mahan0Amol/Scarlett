@@ -19,7 +19,7 @@ Scarlett runs as a small **Electron desktop app** (React frontend) talking to a 
 - [Plugin System](#plugin-system)
 - [Getting Started](#getting-started)
   - [Quick Install (recommended)](#quick-install-recommended)
-  - [Prerequisites](#prerequisites)
+  - [Manual Install](#manual-Install)
   - [1. Clone the repo](#1-clone-the-repo)
   - [2. Backend setup](#2-backend-setup)
   - [3. Frontend setup](#3-frontend-setup)
@@ -115,7 +115,9 @@ irm https://raw.githubusercontent.com/Mahan0Amol/Scarlett/main/scripts/setup.ps1
 
 Once a script finishes, skip ahead to [Run it](#5-run-it) — steps 1–4 below are handled for you. The manual steps are still here for anyone who wants to do it by hand or understand what the script is doing.
 
-### Prerequisites
+### Manual Install
+
+## Prerequisites
 
 | Requirement | Notes |
 |---|---|
