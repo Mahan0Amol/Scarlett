@@ -46,4 +46,7 @@ Scarlett.zip
 settings.json
 **/credentials.json
 **/token.json
-miniconda.exe
+miniconda.exebackend/structured_data.json  
+backend/structured_data.json.bak  
+backend/memory_notes/ 
+backend/structured_data.json 
