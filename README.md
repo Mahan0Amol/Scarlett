@@ -7,7 +7,7 @@ A personal, Jarvis-style voice assistant with a real-time avatar UI, a live vide
 Scarlett runs as a small **Electron desktop app** (React frontend) talking to a **Python backend** that streams your mic and webcam to **Google's Gemini Live API** and gets back a natural, interruptible voice conversation — with full function-calling access to a growing set of tools.
 
 
-[![demo placeholder](https://github.com/Mahan0Amol/Scarlett/raw/main/docs/demo.png)](docs/demo.png)
+[![demo placeholder](https://github.com/Mahan0Amol/Scarlett/raw/main/docs/demo.gif)](docs/demo.png)
 
 ---
 
