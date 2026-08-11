@@ -187,9 +187,7 @@ Environment variables are set up in **two stages** — a starter file first, the
    copy .env.example .env    # Windows
    cd ..
    ```
-
-   > ⚠️ The tracked `.env.example` currently ships with real personal defaults for `EMAIL_ADDRESS`, `USER_NAME`, and `USER_KNOWN_AS` instead of generic placeholders. Overwrite these with your own values in your local `.env` (or via the Full Settings UI in the next step) — and if you maintain this repo publicly, replace the placeholder values in `.env.example` itself so you're not shipping someone's real email address in the template.
-
+   
 2. Start Scarlett once (see [Run it](#5-run-it) below).
 3. Click the **settings icon** in the toolbar → **Full Settings** → find the **.env** section.
 4. Enter the values below there. They get written back into `backend/.env` for you.
