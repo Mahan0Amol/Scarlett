@@ -250,14 +250,17 @@ config = types.LiveConnectConfig(
     - items
 
     Available information-management tools:
-    - read_categories_tool
-    - read_category_items_tool
-    - add_category_tool
-    - add_item_tool
-    - item_exists_tool
-    - search_item_tool
-    - update_item_tool
-    - remove_item_tool
+    - read_categories
+    - read_category_items
+    - add_category
+    - add_item
+    - item_exists
+    - search_item
+    - update_item
+    - remove_item
+
+    NOTES (Unstructured Persona Memory)
+    For durable, narrative facts, preferences, or persona notes (e.g., "User prefers dark mode", "Always write comments in English"), use the `write_note` or `append_note` tools. These are stored in markdown files (like USER.md) and loaded into your context at the start of every session. Do not use `add_item` for general preferences; use notes instead.
 
     GENERAL MEMORY RULE
     Treat the information store as persistent external memory.
@@ -707,6 +710,18 @@ class AudioLoop(AudioIOMixin, VideoIOMixin):
                         # Sync Project State
                         if self.project_manager:
                             self.emit("project_update", {"project": self.project_manager.current_project})
+
+                        # Load Long-Term Memory (Notes) and inject to model
+                        from plugins.memory import get_note_store
+                        note_store = get_note_store()
+                        memory_context = note_store.get_system_prompt_context()
+                        
+                        if memory_context:
+                            print(f"[scarlett DEBUG] [MEMORY] Injecting long-term memory into session...")
+                            await self.notify_model(
+                                f"System Notification: Here is your long-term memory and persona notes from past sessions. Use these to understand the user better:\n\n{memory_context}",
+                                end_of_turn=False
+                            )
                     
                     else:
                         print(f"[scarlett DEBUG] [RECONNECT] Connection restored.")
