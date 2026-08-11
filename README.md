@@ -365,7 +365,7 @@ If you're on **macOS or Linux**, expect to need adjustments to the `keyboard`, a
 | Email plugin errors on first use | Confirm `credentials.json` is in `backend/plugins/email/` and you completed the [OAuth flow](#google-oauth-setup-gmail); delete `token.json` and retry if a previous auth attempt was interrupted. |
 | Printer/smart-home plugin finds no devices | These rely on local network discovery — make sure your machine, printer, and Kasa devices are all on the same network/subnet. |
 | Face auth doesn't unlock | Confirm face-auth is enabled in Settings and a reference image exists (`reference.jpg`) — this feature is off by default. |
-
+|Scarlett hears her own voice as mic input on ASUS devices|Set AUdio noise canceling on 'Single Presenter mode' via MyAsus|
 
 
 ## Note
