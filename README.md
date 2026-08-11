@@ -163,8 +163,7 @@ playwright install
 
 `requirements.txt` currently pulls in: `Pillow`, `PySide6`, `build123d`, `exceptiongroup`, `fastapi`, `google-genai`, `mediapipe`, `mss`, `mutagen`, `opencv-python`, `playwright`, `psutil`, `pyaudio`, `pyautogui`, `pydantic`, `python-dotenv`, `python-socketio`, `taskgroup`, `uvicorn`, `zeroconf`.
 
-> **Note:** `PySide6` is listed but not currently imported anywhere in `backend/` — it's a leftover from an earlier desktop-GUI iteration of this project. Safe to remove if you confirm nothing in your fork uses it; leaving it in just costs extra install time and disk space (it's a large package).
->
+
 > `pyaudio` can be finicky to install on some systems — on Windows it usually installs fine from a wheel; on macOS/Linux you may need `portaudio` installed via your system package manager first (e.g. `brew install portaudio` or `apt install portaudio19-dev`) before `pip install pyaudio` succeeds.
 
 ### 3. Frontend setup
