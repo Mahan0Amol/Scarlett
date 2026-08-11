@@ -176,9 +176,6 @@ npm install
 Key runtime dependencies (from `package.json`, package name `Scarlett-v2` v1.0.0): `socket.io-client` (backend connection), `@mediapipe/tasks-vision` (hand-tracking cursor), `three` + `@react-three/fiber` + `@react-three/drei` (the 3D avatar/audio visualizer), `chess.js` / `react-chessboard` (chess plugin UI), `framer-motion` (animations), `lucide-react` (icons), `clsx` / `tailwind-merge` (conditional styling), and `electron` itself.
 
 Dev tooling: `vite` + `@vitejs/plugin-react` (build), `tailwindcss` + `postcss` + `autoprefixer` (styling), `concurrently` + `wait-on` (orchestrates `npm run dev`), `cross-env`, and `electron` (currently pinned to `^28.2.0`).
-
-> **License field mismatch:** `package.json` currently declares `"license": "ISC"`, while the repo's [`LICENSE`](LICENSE) file is MIT. Pick one and make them consistent — MIT is almost certainly the intended one given the LICENSE file and the [Credits](#credits)/[License](#license) sections below, so the fix is updating `package.json`'s `license` field to `"MIT"`.
-
 ### 4. Configure environment variables
 
 Environment variables are set up in **two stages** — a starter file first, then the actual values through the app's UI:
