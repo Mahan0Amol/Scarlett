@@ -201,7 +201,7 @@ Environment variables are set up in **two stages** — a starter file first, the
 | `USER_KNOWN_AS` | What Scarlett calls you ("sir", your name, a nickname, ...) |
 | `OS` | Target OS string, used by a couple of platform-specific tools |
 
-`backend/settings.json` holds everything that changes at runtime through the Settings UI instead of `.env`: face-auth toggle, per-tool enable/disable (`tool_permissions`), known printers/Kasa devices/door locks, selected mic/speaker/webcam, and cursor sensitivity for the hand-tracking cursor. It's created with sane defaults on first run if it doesn't exist yet.
+`./settings.json` holds everything that changes at runtime through the Settings UI instead of `.env`: face-auth toggle, per-tool enable/disable (`tool_permissions`), known printers/Kasa devices/door locks, selected mic/speaker/webcam, and cursor sensitivity for the hand-tracking cursor. It's created with sane defaults on first run if it doesn't exist yet.
 
 > Only `GEMINI_API_KEY` is strictly required to get Scarlett talking. Everything else in the table above just unlocks the matching plugin (weather, email, music) — leave them blank and those plugins simply won't work until you fill them in.
 
@@ -266,12 +266,14 @@ To use Scarlett's Gmail features (the email plugin), you need your own Google OA
 ## Project Structure
 
 ```
+/
+├── settings.json              # Runtime settings, created with defaults on first run
+
 backend/
 ├── Scarlett.py              # AudioLoop: the Gemini Live session + system prompt
 ├── server.py                 # FastAPI + Socket.IO entry point, settings & plugin manager API
 ├── authenticator.py           # Optional face-auth
 ├── .env.example               # Template — copy to .env before first run
-├── settings.json              # Runtime settings, created with defaults on first run
 ├── core/
 │   ├── audio_io.py            # Mic capture / speaker playback mixin
 │   ├── video_io.py            # Webcam / screen-share mixin
@@ -344,13 +346,12 @@ This produces a `.splugin` file, installable by anyone through **Settings → Fu
 
 ## Platform Support
 
-Scarlett is currently **built and tested on Windows only**. Several plugins assume a Windows environment:
+Scarlett is currently **built and tested on Windows only** but it might work on Linux or MacOS. Several plugins assume a Windows environment:
 
-- Shell commands like `cd /d` for drive switching
 - `pyautogui` and keyboard-control tools that assume a Windows desktop
 - Printer/smart-home discovery tools use Windows-oriented networking calls in places
 
-If you're on **macOS or Linux**, expect to need adjustments to the `cmd`, `keyboard`, and `files` plugins at minimum before those features work. Voice conversation, the web agent, and CAD generation are less platform-dependent and more likely to work out of the box. If you get Scarlett running on another OS, the maintainer welcomes a PR or a heads-up (see [Contributing](#contributing)).
+If you're on **macOS or Linux**, expect to need adjustments to the `keyboard`, and `files` plugins at minimum before those features work. Voice conversation, the web agent, and CAD generation are less platform-dependent and more likely to work out of the box. If you get Scarlett running on another OS, the maintainer welcomes a PR or a heads-up (see [Contributing](#contributing)).
 
 ## Troubleshooting
 

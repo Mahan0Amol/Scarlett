@@ -7,8 +7,6 @@ Scarlett_venv/
 venv/
 .venv/
 env/
-tests/
-
 
 # Scarlett Specific Local Data
 backend/reference.jpg
