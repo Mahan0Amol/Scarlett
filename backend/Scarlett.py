@@ -501,7 +501,7 @@ class AudioLoop(AudioIOMixin, VideoIOMixin):
         # lives here rather than being plugin-owned.
         from plugins.project.plugin import ProjectManager
         current_dir = os.path.dirname(os.path.abspath(__file__))
-        project_root = os.path.dirname(current_dir)
+        project_root = os.getenv("PROJECTS_FOLDER") or os.path.dirname(current_dir)
         self.project_manager = ProjectManager(project_root)
 
     def emit(self, event, data=None):
