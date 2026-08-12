@@ -1,0 +1,14 @@
+{
+    "id": "cmd",
+    "name": "Terminal / Command Execution",
+    "version": "1.0.0",
+    "description": "Executes shell commands on the host machine and returns their output, with confirmation required before each run.",
+    "author": "Scarlett",
+    "frontend": [],
+    "python_dependencies": [],
+    "npm_dependencies": {},
+    "permissions": [
+        "shell_execute",
+        "filesystem_read"
+    ]
+}

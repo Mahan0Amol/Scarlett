@@ -1,0 +1,14 @@
+{
+    "id": "project",
+    "name": "Project Manager",
+    "version": "1.0.0",
+    "description": "Creates, switches, and lists projects that scope files, CAD artifacts, and chat history.",
+    "author": "Scarlett",
+    "frontend": [],
+    "python_dependencies": [],
+    "npm_dependencies": {},
+    "permissions": [
+        "filesystem_read",
+        "filesystem_write"
+    ]
+}

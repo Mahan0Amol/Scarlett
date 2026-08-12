@@ -1,0 +1,15 @@
+{
+    "id": "keyboard",
+    "name": "Keyboard Control",
+    "version": "1.0.0",
+    "description": "Simulates keyboard input on the host machine - key presses/shortcuts and typing text.",
+    "author": "Scarlett",
+    "frontend": [],
+    "python_dependencies": [
+        "pyautogui"
+    ],
+    "npm_dependencies": {},
+    "permissions": [
+        "system_control"
+    ]
+}

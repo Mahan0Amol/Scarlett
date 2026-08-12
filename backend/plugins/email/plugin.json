@@ -1,0 +1,19 @@
+{
+    "id": "email",
+    "name": "Email (Gmail)",
+    "version": "1.0.0",
+    "description": "Reads, sends, and deletes Gmail messages via OAuth2, with confirmation required for sending and deleting.",
+    "author": "Scarlett",
+    "frontend": [],
+    "python_dependencies": [
+        "google-auth",
+        "google-auth-oauthlib",
+        "google-api-python-client"
+    ],
+    "npm_dependencies": {},
+    "permissions": [
+        "network",
+        "email_access",
+        "filesystem_write"
+    ]
+}
