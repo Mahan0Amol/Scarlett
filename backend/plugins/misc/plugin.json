@@ -1,0 +1,11 @@
+{
+    "id": "misc",
+    "name": "Misc",
+    "version": "1.0.0",
+    "description": "Small utility tools that don't belong to a bigger plugin, e.g. waiting/delaying execution.",
+    "author": "Scarlett",
+    "frontend": [],
+    "python_dependencies": [],
+    "npm_dependencies": {},
+    "permissions": []
+}
