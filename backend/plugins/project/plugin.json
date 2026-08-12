@@ -1,14 +1,11 @@
 {
     "id": "project",
-    "name": "Project Manager",
+    "name": "Projects",
     "version": "1.0.0",
-    "description": "Creates, switches, and lists projects that scope files, CAD artifacts, and chat history.",
+    "description": "Creates, switches, and lists projects - the primary organisation for Scarlett-managed files.",
     "author": "Scarlett",
     "frontend": [],
     "python_dependencies": [],
     "npm_dependencies": {},
-    "permissions": [
-        "filesystem_read",
-        "filesystem_write"
-    ]
+    "permissions": []
 }

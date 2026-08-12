@@ -1,8 +1,8 @@
 {
     "id": "files",
-    "name": "File System",
+    "name": "Files",
     "version": "1.0.0",
-    "description": "Reads and writes files, and lists directory contents, scoped to the current project.",
+    "description": "Writes files into the active project and reads files/directories from disk.",
     "author": "Scarlett",
     "frontend": [],
     "python_dependencies": [],

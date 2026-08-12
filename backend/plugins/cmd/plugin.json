@@ -1,14 +1,13 @@
 {
     "id": "cmd",
-    "name": "Terminal / Command Execution",
+    "name": "Terminal",
     "version": "1.0.0",
-    "description": "Executes shell commands on the host machine and returns their output, with confirmation required before each run.",
+    "description": "Runs Windows CMD commands on the host machine and returns the output.",
     "author": "Scarlett",
     "frontend": [],
     "python_dependencies": [],
     "npm_dependencies": {},
     "permissions": [
-        "shell_execute",
-        "filesystem_read"
+        "filesystem_write"
     ]
 }
